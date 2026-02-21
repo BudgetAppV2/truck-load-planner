@@ -404,6 +404,8 @@ function toggleSpreadsheetPanel() {
   const btn = document.getElementById('btn-collapse-sheet');
   btn.innerHTML = spreadsheetCollapsed ? '&#9660;' : '&#9650;';
   btn.title = spreadsheetCollapsed ? 'Expand spreadsheet' : 'Collapse spreadsheet';
+  // Resize 3D viewer after panel transition (200ms in CSS)
+  setTimeout(() => { if (viewer) viewer._onResize(); }, 220);
 }
 
 // ── Update row count display ──
