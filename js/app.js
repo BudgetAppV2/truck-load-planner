@@ -1,11 +1,13 @@
 // app.js — Application initialization, UI wiring, config loading
 import { loadTruckConfig, loadBlockConfig, getBlockConfigFiles } from './config-loader.js';
 import { TruckViewer } from './viewer3d.js';
+import { fetchAndParseCases } from './sheet-loader.js';
 
 let viewer;
 let truckConfig;
 let blockConfig;
 let currentTruckKey;
+let parsedCases = []; // cases from last sheet fetch (unplaced)
 
 // ── DOM refs ──
 const truckSelect = document.getElementById('truck-select');
@@ -28,6 +30,8 @@ const statFill = document.getElementById('stat-fill');
 const statBarFill = document.getElementById('stat-bar-fill');
 const statVolume = document.getElementById('stat-volume');
 const sheetStatus = document.getElementById('sheet-status');
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText = document.getElementById('loading-text');
 
 // Sidebar
 const legendList = document.getElementById('legend-list');
@@ -148,16 +152,12 @@ function wireEvents() {
     localStorage.setItem('tlp-sheet-url', sheetUrlInput.value);
   });
 
-  // Fetch sheet — placeholder for Phase 2
-  btnFetch.addEventListener('click', () => {
-    const url = sheetUrlInput.value.trim();
-    if (!url) {
-      sheetStatus.textContent = 'Enter a Google Sheet URL or ID';
-      return;
-    }
-    localStorage.setItem('tlp-sheet-url', url);
-    sheetStatus.textContent = 'Sheet loading will be implemented in Phase 2';
-    console.log('[TLP] Fetch Sheet clicked — will be wired in Phase 2');
+  // Fetch sheet
+  btnFetch.addEventListener('click', () => fetchSheet());
+
+  // Also fetch on Enter key in the sheet URL input
+  sheetUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') fetchSheet();
   });
 
   // Camera buttons
@@ -224,10 +224,47 @@ function wireEvents() {
   });
 }
 
+// ── Fetch and parse Google Sheet ──
+async function fetchSheet() {
+  const input = sheetUrlInput.value.trim();
+  if (!input) {
+    sheetStatus.textContent = 'Enter a Google Sheet URL or ID';
+    return;
+  }
+  localStorage.setItem('tlp-sheet-url', input);
+
+  loadingOverlay.classList.add('active');
+  loadingText.textContent = 'Lecture du Google Sheet...';
+
+  try {
+    loadingText.textContent = 'Parsing inventaire...';
+    parsedCases = await fetchAndParseCases(input, blockConfig);
+
+    // Log to console as required by Phase 2
+    console.log(`[TLP] Fetched ${parsedCases.length} cases from sheet`);
+    console.table(parsedCases.slice(0, 10));
+
+    // Update sidebar case list (no 3D placement yet — Phase 3)
+    updateCaseList();
+    updateLegend();
+    updateStats();
+
+    const now = new Date().toLocaleTimeString('fr-CA');
+    sheetStatus.textContent = `${parsedCases.length} cases loaded — ${now}`;
+  } catch (err) {
+    console.error('[TLP] Sheet fetch error:', err);
+    sheetStatus.textContent = 'Error: ' + err.message;
+  } finally {
+    loadingOverlay.classList.remove('active');
+  }
+}
+
 // ── Update stats bar ──
 function updateStats() {
   const stats = viewer.getStats();
-  statCases.textContent = stats.caseCount;
+  // Show parsed case count if no placements yet
+  const caseCount = stats.caseCount || parsedCases.length;
+  statCases.textContent = caseCount;
   statDepth.textContent = `${stats.maxDepth}" / ${stats.truckDepth}"`;
   statBarFill.style.width = stats.depthPct + '%';
   statBarFill.style.background = stats.depthPct > 90 ? '#e94560' : stats.depthPct > 70 ? '#f0a030' : '#4CAF50';
@@ -235,18 +272,22 @@ function updateStats() {
   statVolume.textContent = stats.volumePct + '%';
 }
 
+// ── Get active case data (placed cases if available, else parsed cases) ──
+function getActiveCases() {
+  return viewer.placementData.length > 0 ? viewer.placementData : parsedCases;
+}
+
 // ── Update legend ──
 function updateLegend() {
   legendList.innerHTML = '';
   if (!blockConfig || !blockConfig.departments) return;
 
-  // Count cases per department
+  const cases = getActiveCases();
   const counts = {};
-  viewer.placementData.forEach(p => {
+  cases.forEach(p => {
     counts[p.dept] = (counts[p.dept] || 0) + 1;
   });
 
-  // Show all configured departments (even if 0 cases)
   for (const [code, dept] of Object.entries(blockConfig.departments)) {
     const item = document.createElement('div');
     item.className = 'legend-item';
@@ -268,24 +309,30 @@ function updateLegend() {
 // ── Update case list ──
 function updateCaseList() {
   caseList.innerHTML = '';
-  const filter = viewer.currentFilter;
+  const cases = getActiveCases();
+  const filter = deptFilter.value;
   const filtered = filter === 'ALL'
-    ? viewer.placementData
-    : viewer.placementData.filter(p => p.dept === filter);
+    ? cases
+    : cases.filter(p => p.dept === filter);
 
   visibleCount.textContent = filtered.length;
 
-  filtered.forEach(item => {
-    const idx = viewer.placementData.indexOf(item);
+  const hasPlacement = viewer.placementData.length > 0;
+
+  filtered.forEach((item, fi) => {
+    const idx = cases.indexOf(item);
     const el = document.createElement('div');
     el.className = 'case-item';
     el.dataset.index = idx;
     el.innerHTML = `
       <div class="case-dot" style="background:${viewer.getDeptHex(item.dept)}"></div>
-      <span class="case-name" title="${item.name}">${item.name}</span>
+      <span class="case-name" title="${item.name || item.nom}">${item.name || item.nom}</span>
       <span class="case-dims">${item.width}x${item.depth}x${item.height}</span>
     `;
-    el.addEventListener('click', () => viewer.selectCase(idx));
+    // Only allow click-to-select if cases are placed in 3D
+    if (hasPlacement) {
+      el.addEventListener('click', () => viewer.selectCase(idx));
+    }
     caseList.appendChild(el);
   });
 }
