@@ -51,43 +51,78 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
 
 /* jspreadsheet dark mode overrides */
 #spreadsheet-container .jexcel_container{border:none!important;background:transparent!important}
-#spreadsheet-container .jexcel{border-color:var(--border)!important;font-size:12px}
+#spreadsheet-container .jexcel{border-color:#1a2332!important;font-size:12px}
+
+/* Header row — very dark, bold white */
 #spreadsheet-container .jexcel thead td{
-  background:var(--accent2)!important;color:var(--text)!important;
-  border-color:var(--border)!important;font-weight:600;font-size:11px;
+  background:#0d1520!important;color:#e8e8e8!important;
+  border-color:#1a2332!important;font-weight:700;font-size:11px;
   text-transform:uppercase;letter-spacing:0.3px
 }
+
+/* Cell defaults — dark navy bg, light gray text
+   No !important on background/color so jspreadsheet setStyle() can override */
 #spreadsheet-container .jexcel tbody td{
-  background:var(--panel)!important;color:var(--text)!important;
-  border-color:rgba(15,52,96,0.5)!important;padding:4px 6px
+  background:#1a2332;color:#ccc;
+  border-color:#1e2b3a!important;padding:4px 6px;transition:none
 }
-#spreadsheet-container .jexcel tbody td:hover{background:rgba(15,52,96,0.6)!important}
-#spreadsheet-container .jexcel tbody td.highlight,
+
+/* Row hover — subtle white overlay (uses !important to override inline dept colors) */
+#spreadsheet-container .jexcel tbody tr:hover td:not(.highlight){
+  filter:brightness(1.15)
+}
+
+/* Selected/editing cell — lighter bg + visible border */
+#spreadsheet-container .jexcel tbody td.highlight{
+  background:#243040!important;color:#fff!important;
+  box-shadow:inset 0 0 0 1.5px #4a80b8
+}
 #spreadsheet-container .jexcel tbody td.highlight-left,
 #spreadsheet-container .jexcel tbody td.highlight-right,
 #spreadsheet-container .jexcel tbody td.highlight-top,
 #spreadsheet-container .jexcel tbody td.highlight-bottom{
-  background:rgba(233,69,96,0.15)!important
+  background:#243040!important;color:#fff!important
 }
+
+/* Row number column */
 #spreadsheet-container .jexcel_row td:first-child{
-  background:rgba(15,52,96,0.4)!important;color:var(--text-dim)!important;
-  border-color:var(--border)!important
+  background:#0d1520!important;color:#556!important;
+  border-color:#1a2332!important;font-size:11px
 }
+
+/* Content area */
 #spreadsheet-container .jexcel_content{background:transparent!important}
+
+/* Inline dropdown header (cell display) */
 #spreadsheet-container .jexcel .jdropdown-container-header{
-  background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important
+  background:transparent!important;color:inherit!important;border-color:transparent!important
 }
-#spreadsheet-container .jexcel .jcheckbox{border-color:var(--text-dim)}
-/* dropdown popup */
-.jdropdown-item{background:var(--panel);color:var(--text)}
-.jdropdown-item:hover,.jdropdown-item.jdropdown-selected{background:var(--accent2);color:var(--text)}
-.jdropdown-container-header{background:var(--panel)!important;color:var(--text)!important}
+
+/* Checkbox styling */
+#spreadsheet-container .jexcel .jcheckbox{border-color:#445}
+
+/* Dropdown popup — dark background */
+.jdropdown-item{background:#141e2e;color:#ccc}
+.jdropdown-item:hover{background:#1e3050;color:#fff}
+.jdropdown-item.jdropdown-selected{background:#1e3050;color:#fff}
+.jdropdown-container-header{background:#141e2e!important;color:#ccc!important}
 .jdropdown-backdrop{background:transparent!important}
-/* context menu */
-.jcontextmenu{background:var(--panel)!important;border:1px solid var(--border)!important;color:var(--text)!important}
-.jcontextmenu>div:hover{background:var(--accent2)!important}
-/* toolbar/pagination if shown */
-#spreadsheet-container .jexcel_pagination{background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important}
+.jdropdown-content{background:#141e2e!important;border:1px solid #1a2332!important;box-shadow:0 4px 16px rgba(0,0,0,0.5)!important}
+
+/* Context menu */
+.jcontextmenu{background:#141e2e!important;border:1px solid #1a2332!important;color:#ccc!important;box-shadow:0 4px 16px rgba(0,0,0,0.5)!important}
+.jcontextmenu>div:hover{background:#1e3050!important;color:#fff!important}
+
+/* Editor input (inline editing) */
+#spreadsheet-container .jexcel .editor input,
+#spreadsheet-container .jexcel .editor textarea,
+#spreadsheet-container .jexcel_editor{
+  background:#1a2332!important;color:#fff!important;border:1px solid #4a80b8!important;
+  outline:none!important
+}
+
+/* Pagination if shown */
+#spreadsheet-container .jexcel_pagination{background:#0d1520!important;color:#ccc!important;border-color:#1a2332!important}
 
 /* 3D Canvas */
 #canvas-wrap{grid-column:1;grid-row:3;position:relative;overflow:hidden;background:#0d1117}

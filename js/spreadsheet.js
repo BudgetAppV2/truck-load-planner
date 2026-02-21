@@ -21,15 +21,19 @@ const TEMPLATE_DATA = [
   ['Moniteur', 31, 24, 32, 'SON', 4, 'true', 2, 'false', 'true', 'Moniteur', true],
 ];
 
-// Department color mapping for row highlighting
+// Department color mapping — dark muted tones for dark theme
 const DEPT_COLORS = {
-  LX:      'rgba(76, 175, 80, 0.12)',
-  SON:     'rgba(33, 150, 243, 0.12)',
-  CARP:    'rgba(255, 193, 7, 0.12)',
-  VID:     'rgba(233, 30, 99, 0.12)',
-  SCENO:   'rgba(156, 39, 176, 0.12)',
-  GENERAL: 'rgba(136, 153, 170, 0.08)',
+  LX:      '#3d3520',
+  SON:     '#1e2a3d',
+  CARP:    '#1e3320',
+  VID:     '#3d1e2a',
+  SCENO:   '#2d1e3d',
+  GENERAL: '#252525',
 };
+
+// Deselected row styling
+const DESELECTED_BG = '#111820';
+const DESELECTED_TEXT = '#555';
 
 // CSV import column alias mapping (mirrors sheet-loader.js COLUMN_ALIASES)
 const CSV_ALIASES = {
@@ -96,7 +100,7 @@ export class SpreadsheetEditor {
     });
 
     // Apply initial row colors
-    this._applyAllRowColors();
+    this._applyAllRowStyles();
 
     console.log('[Spreadsheet] Initialized with', data.length, 'rows');
   }
@@ -228,7 +232,7 @@ export class SpreadsheetEditor {
     }
 
     this.jss.setData(data);
-    this._applyAllRowColors();
+    this._applyAllRowStyles();
     this._saveToLocalStorage();
 
     // Update dept dropdown if new depts found
@@ -296,7 +300,7 @@ export class SpreadsheetEditor {
     }
 
     this.jss.setData(data);
-    this._applyAllRowColors();
+    this._applyAllRowStyles();
     this._saveToLocalStorage();
     console.log(`[Spreadsheet] Imported ${data.length} rows from CSV`);
   }
@@ -339,7 +343,7 @@ export class SpreadsheetEditor {
       data.push(['', '', '', '', '', 1, 'false', 1, 'false', 'true', '', true]);
     }
     this.jss.setData(data);
-    this._applyAllRowColors();
+    this._applyAllRowStyles();
     this._saveToLocalStorage();
     console.log('[Spreadsheet] Reset to template data');
   }
@@ -361,9 +365,11 @@ export class SpreadsheetEditor {
   // ════════════════════════════════════════════════════
 
   _onChange(instance, cell, x, y, value) {
-    // Color row when dept changes
-    if (parseInt(x) === COL.DEPT) {
-      this._applyRowColor(parseInt(y), value);
+    const col = parseInt(x);
+    const row = parseInt(y);
+    // Re-style row when dept or sélection changes
+    if (col === COL.DEPT || col === COL.SELECTION) {
+      this._applyRowStyle(row);
     }
   }
 
@@ -376,24 +382,36 @@ export class SpreadsheetEditor {
   // PRIVATE: Row coloring by department
   // ════════════════════════════════════════════════════
 
-  _applyRowColor(rowIndex, dept) {
-    const color = DEPT_COLORS[dept] || '';
+  _applyRowStyle(rowIndex) {
+    const data = this.jss.getData();
+    if (rowIndex >= data.length) return;
+    const row = data[rowIndex];
+    const dept = String(row[COL.DEPT] || '').trim();
+    const selected = row[COL.SELECTION] === true || row[COL.SELECTION] === 'true';
     const numCols = 12;
-    for (let col = 0; col < numCols; col++) {
-      const cellRef = this._cellRef(col, rowIndex);
-      if (color) {
-        this.jss.setStyle(cellRef, 'background-color', color);
-      } else {
-        this.jss.setStyle(cellRef, 'background-color', '');
+
+    if (!selected) {
+      // Deselected: dark + dimmed text
+      for (let col = 0; col < numCols; col++) {
+        const ref = this._cellRef(col, rowIndex);
+        this.jss.setStyle(ref, 'background-color', DESELECTED_BG);
+        this.jss.setStyle(ref, 'color', DESELECTED_TEXT);
+      }
+    } else {
+      // Selected: dept color or default, normal text
+      const bg = DEPT_COLORS[dept] || '';
+      for (let col = 0; col < numCols; col++) {
+        const ref = this._cellRef(col, rowIndex);
+        this.jss.setStyle(ref, 'background-color', bg);
+        this.jss.setStyle(ref, 'color', '');
       }
     }
   }
 
-  _applyAllRowColors() {
+  _applyAllRowStyles() {
     const data = this.jss.getData();
     for (let i = 0; i < data.length; i++) {
-      const dept = String(data[i][COL.DEPT] || '').trim();
-      if (dept) this._applyRowColor(i, dept);
+      this._applyRowStyle(i);
     }
   }
 
