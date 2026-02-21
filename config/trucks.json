@@ -1,0 +1,26 @@
+{
+  "trucks": {
+    "20ft": {
+      "label": "20' Truck",
+      "interiorWidth": 98,
+      "interiorLength": 240,
+      "interiorHeight": 96,
+      "unit": "inches"
+    },
+    "36ft": {
+      "label": "36' Truck",
+      "interiorWidth": 98,
+      "interiorLength": 432,
+      "interiorHeight": 96,
+      "unit": "inches"
+    },
+    "53ft": {
+      "label": "53' Truck",
+      "interiorWidth": 98,
+      "interiorLength": 624,
+      "interiorHeight": 108,
+      "unit": "inches"
+    }
+  },
+  "default": "53ft"
+}
