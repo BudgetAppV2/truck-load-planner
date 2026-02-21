@@ -1,4 +1,4 @@
-// sheet-loader.js — Google Sheet fetch + parsing
+// sheet-loader.js — Google Sheet fetch + parsing (universal + legacy)
 // Uses Google Visualization API with JSONP to bypass CORS (works from file:// too)
 
 /**
@@ -12,10 +12,8 @@
 export function extractSheetId(input) {
   if (!input) return '';
   input = input.trim();
-  // Match /d/SHEET_ID/ pattern in Google Sheets URLs
   const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   if (match) return match[1];
-  // If it looks like an ID already (no slashes, reasonable length)
   if (!input.includes('/') && input.length > 10) return input;
   return input;
 }
@@ -74,108 +72,199 @@ export function fetchSheetViaJsonp(sheetId, sheetName = 'Inventaire', timeoutMs 
   });
 }
 
+// ── Column alias maps (case-insensitive) ──
+const COLUMN_ALIASES = {
+  nom:       ['NOM', 'NAME', 'CASE_NAME', 'DESCRIPTION'],
+  largeur:   ['LARGEUR', 'WIDTH', 'W', 'LARG', 'L (PO)'],
+  profondeur:['PROFONDEUR', 'DEPTH', 'D', 'PROF', 'W (PO)'],
+  hauteur:   ['HAUTEUR', 'HEIGHT', 'H', 'HAUT', 'H (PO)'],
+  dept:      ['DEPT', 'DEPARTMENT', 'DEPARTEMENT', 'DEP'],
+  qty:       ['QTY', 'QUANTITY', 'QUANTITE', 'QUANTITÉ', 'QTE'],
+  stackable: ['STACKABLE', 'EMPILABLE'],
+  max_stack: ['MAX_STACK', 'MAXSTACK', 'MAX_EMPILABLE'],
+  is_floor:  ['IS_FLOOR', 'PLANCHER', 'FLOOR'],
+  allow_rotation: ['ALLOW_ROTATION', 'ROTATION'],
+  group:     ['GROUP', 'GROUPE', 'SUBGROUP', 'SOUS_GROUPE', 'SOUS-GROUPE', 'SOUS GROUPE'],
+  camion:    ['CAMION', 'TRUCK'],
+  // Legacy GB columns
+  index:     ['#', 'INDEX'],
+  detail:    ['DETAIL', 'DÉTAIL'],
+  num_caisse:['NUM_CAISSE', 'CASE_ID'],
+  block_name:['BLOCK_NAME'],
+  rangement: ['RANGEMENT'],
+  inclus:    ['INCLUS', 'INCLUDED'],
+};
+
+function matchColumn(header, aliases) {
+  const h = header.trim().toUpperCase();
+  for (const [field, names] of Object.entries(aliases)) {
+    if (names.includes(h) || names.some(n => h.includes(n) && n.length > 3)) {
+      return field;
+    }
+  }
+  return null;
+}
+
+// ── Cell helpers ──
+function getVal(row, idx) {
+  if (idx === undefined || !row.c || !row.c[idx]) return '';
+  const cell = row.c[idx];
+  if (cell.v === null || cell.v === undefined) return '';
+  return String(cell.f || cell.v).trim();
+}
+
+function getNum(row, idx) {
+  if (idx === undefined || !row.c || !row.c[idx]) return 0;
+  const cell = row.c[idx];
+  if (cell.v === null || cell.v === undefined) return 0;
+  const n = typeof cell.v === 'number' ? cell.v : parseFloat(String(cell.v).replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+
+function getBool(row, idx) {
+  if (idx === undefined || !row.c || !row.c[idx]) return false;
+  const cell = row.c[idx];
+  if (cell.v === true) return true;
+  if (cell.v === false) return false;
+  const s = String(cell.v || cell.f || '').toUpperCase().trim();
+  return s === 'TRUE' || s === 'VRAI' || s === 'OUI' || s === 'YES' || s === '1';
+}
+
 /**
- * Parse Google Visualization API response into case objects.
- * Resolves block_name, dept, and dimensions from blockConfig fallbacks.
+ * Parse Google Visualization API response into universal case objects.
+ *
+ * Universal mode: dimensions come from sheet columns (largeur/profondeur/hauteur).
+ * Legacy mode: if blockConfig has blocks/subgroupBlock/subgroupDept, use those as fallbacks.
  *
  * @param {Object} gvizResponse — response from fetchSheetViaJsonp
- * @param {Object} blockConfig — { blocks, subgroupBlock, subgroupDept, departments }
- * @returns {Object[]} — Array of case objects
+ * @param {Object} [blockConfig] — optional legacy block config { blocks, subgroupBlock, subgroupDept }
+ * @returns {Object[]} — Array of case objects ready for solver
  */
 export function parseSheetData(gvizResponse, blockConfig) {
   const table = gvizResponse.table;
   if (!table || !table.rows) return [];
 
-  const subgroupBlock = blockConfig.subgroupBlock || {};
-  const subgroupDept = blockConfig.subgroupDept || {};
-  const blocks = blockConfig.blocks || {};
+  // Legacy fallbacks
+  const subgroupBlock = blockConfig?.subgroupBlock || {};
+  const subgroupDept = blockConfig?.subgroupDept || {};
+  const blocks = blockConfig?.blocks || {};
+  const isLegacy = Object.keys(blocks).length > 0;
 
-  // Build column index map from headers (case-insensitive)
+  // Build column index map from headers using aliases
   const cols = table.cols.map(c => (c.label || '').trim().toUpperCase());
   const colIdx = {};
   cols.forEach((h, i) => {
-    if (h === '#') colIdx.index = i;
-    else if (h === 'DEPT') colIdx.dept = i;
-    else if (h.includes('SOUS-GROUPE') || h.includes('SOUS GROUPE') || h === 'SUBGROUP') colIdx.subgroup = i;
-    else if (h === 'NOM') colIdx.nom = i;
-    else if (h.includes('DÉTAIL') || h.includes('DETAIL')) colIdx.detail = i;
-    else if (h === 'NUM_CAISSE') colIdx.num_caisse = i;
-    else if (h === 'BLOCK_NAME') colIdx.block_name = i;
-    else if (h === 'L (PO)' || h === 'WIDTH') colIdx.width = i;
-    else if (h === 'W (PO)' || h === 'DEPTH') colIdx.depth = i;
-    else if (h === 'H (PO)' || h === 'HEIGHT') colIdx.height = i;
-    else if (h === 'RANGEMENT') colIdx.rangement = i;
-    else if (h === 'INCLUS') colIdx.inclus = i;
-    else if (h === 'CAMION') colIdx.camion = i;
+    const field = matchColumn(h, COLUMN_ALIASES);
+    if (field && colIdx[field] === undefined) {
+      colIdx[field] = i;
+    }
   });
 
-  const getVal = (row, idx) => {
-    if (idx === undefined || !row.c || !row.c[idx]) return '';
-    const cell = row.c[idx];
-    if (cell.v === null || cell.v === undefined) return '';
-    return String(cell.f || cell.v).trim();
-  };
-
-  const getNum = (row, idx) => {
-    if (idx === undefined || !row.c || !row.c[idx]) return 0;
-    const cell = row.c[idx];
-    if (cell.v === null || cell.v === undefined) return 0;
-    const n = typeof cell.v === 'number' ? cell.v : parseFloat(String(cell.v).replace(',', '.'));
-    return isNaN(n) ? 0 : n;
-  };
-
-  const getBool = (row, idx) => {
-    if (idx === undefined || !row.c || !row.c[idx]) return false;
-    const cell = row.c[idx];
-    if (cell.v === true) return true;
-    if (cell.v === false) return false;
-    const s = String(cell.v || cell.f || '').toUpperCase().trim();
-    return s === 'TRUE' || s === 'VRAI';
-  };
+  console.log('[Sheet] Detected columns:', Object.keys(colIdx).join(', '));
+  console.log('[Sheet] Mode:', isLegacy ? 'legacy (block config fallback)' : 'universal (dimensions from sheet)');
 
   const cases = [];
+  let skipped = 0;
+
   for (const row of table.rows) {
-    // Only include rows where INCLUS is true (if the column exists)
+    // Legacy: INCLUS filter
     if (colIdx.inclus !== undefined && !getBool(row, colIdx.inclus)) continue;
 
-    const subgroup = getVal(row, colIdx.subgroup);
-    if (!subgroup) continue;
+    // Get name — required in universal mode
+    const nom = getVal(row, colIdx.nom);
 
-    // Resolve block_name: sheet value → subgroupBlock mapping → empty
+    // Get group/subgroup — key field for solver grouping
+    const group = getVal(row, colIdx.group);
+
+    // In legacy mode, subgroup is required (it's the key to everything)
+    // In universal mode, nom is required
+    if (!nom && !group) {
+      skipped++;
+      continue;
+    }
+
+    // Resolve block_name (legacy path)
     const sheetBlock = getVal(row, colIdx.block_name);
-    const blockName = sheetBlock || subgroupBlock[subgroup] || '';
+    const blockName = sheetBlock || subgroupBlock[group] || '';
 
-    // Resolve dept: sheet value → subgroupDept mapping → 'AUTRE'
+    // Resolve dept: sheet value → legacy mapping → 'GENERAL'
     const sheetDept = getVal(row, colIdx.dept);
-    const dept = sheetDept || subgroupDept[subgroup] || 'AUTRE';
+    const dept = sheetDept || (isLegacy ? (subgroupDept[group] || 'AUTRE') : 'GENERAL');
 
-    // Resolve dimensions: sheet values → block config → 0
+    // Resolve dimensions: sheet columns → block config fallback → 0
     const blockDef = blocks[blockName] || {};
-    const width = getNum(row, colIdx.width) || blockDef.w || 0;
-    const depth = getNum(row, colIdx.depth) || blockDef.d || 0;
-    const height = getNum(row, colIdx.height) || blockDef.h || 0;
+    const width = getNum(row, colIdx.largeur) || blockDef.w || 0;
+    const depth = getNum(row, colIdx.profondeur) || blockDef.d || 0;
+    const height = getNum(row, colIdx.hauteur) || blockDef.h || 0;
 
+    // Skip rows with no dimensions (can't place a 0x0x0 case)
+    if (width === 0 || depth === 0 || height === 0) {
+      if (!isLegacy) {
+        console.warn(`[Sheet] Skipping "${nom || group}" — missing dimensions (${width}x${depth}x${height})`);
+      }
+      // In legacy mode, 0 dimensions are expected for some rows (the block config provides them)
+      // But if block config also has 0, skip
+      if (width === 0 && depth === 0 && height === 0) {
+        skipped++;
+        continue;
+      }
+    }
+
+    // Resolve stacking
+    const stackable = colIdx.stackable !== undefined
+      ? getBool(row, colIdx.stackable)
+      : (blockDef.stackable || false);
+    const maxStack = colIdx.max_stack !== undefined
+      ? (getNum(row, colIdx.max_stack) || 1)
+      : (blockDef.maxStack || 1);
+
+    // Floor panel flag
+    const isFloor = colIdx.is_floor !== undefined
+      ? getBool(row, colIdx.is_floor)
+      : false;
+
+    // Rotation allowed
+    const allowRotation = colIdx.allow_rotation !== undefined
+      ? getBool(row, colIdx.allow_rotation)
+      : (blockDef.allowRotation !== false);
+
+    // Quantity expansion
+    const qty = colIdx.qty !== undefined ? (getNum(row, colIdx.qty) || 1) : 1;
+
+    // Truck assignment
     const truckVal = getVal(row, colIdx.camion);
     const truck = (!truckVal || truckVal === '—' || truckVal === '-') ? '' : truckVal;
 
-    cases.push({
-      index: getNum(row, colIdx.index) || cases.length + 1,
-      dept,
-      subgroup,
-      nom: getVal(row, colIdx.nom),
-      name: getVal(row, colIdx.nom), // alias for display
-      detail: getVal(row, colIdx.detail),
-      num_caisse: getVal(row, colIdx.num_caisse),
-      block_name: blockName,
-      width,
-      depth,
-      height,
-      rotation: blockDef.rot || 0,
-      rangement: getVal(row, colIdx.rangement),
-      truck,
-    });
+    // Create case objects (expand qty)
+    for (let q = 0; q < qty; q++) {
+      const caseName = qty > 1 ? `${nom || group} #${q + 1}` : (nom || group);
+      cases.push({
+        index: cases.length + 1,
+        dept,
+        subgroup: group || nom,  // solver uses subgroup as grouping key
+        group: group || nom,     // universal grouping key
+        nom: caseName,
+        name: caseName,
+        detail: getVal(row, colIdx.detail),
+        num_caisse: getVal(row, colIdx.num_caisse),
+        block_name: blockName,
+        width,
+        depth,
+        height,
+        rotation: blockDef.rot || 0,
+        rangement: getVal(row, colIdx.rangement),
+        truck,
+        stackable,
+        maxStack,
+        isFloor,
+        allowRotation,
+      });
+    }
   }
 
+  if (skipped > 0) {
+    console.warn(`[Sheet] Skipped ${skipped} rows (missing name/group or dimensions)`);
+  }
   console.log(`[Sheet] Parsed ${cases.length} cases from ${table.rows.length} rows`);
   return cases;
 }
@@ -183,7 +272,7 @@ export function parseSheetData(gvizResponse, blockConfig) {
 /**
  * High-level: fetch and parse a Google Sheet into cases.
  * @param {string} input — URL or Sheet ID
- * @param {Object} blockConfig — block configuration
+ * @param {Object} [blockConfig] — optional legacy block configuration
  * @param {string} [sheetName='Inventaire'] — tab name
  * @returns {Promise<Object[]>} — parsed cases
  */

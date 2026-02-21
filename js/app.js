@@ -1,13 +1,16 @@
-// app.js — Application initialization, UI wiring, config loading
-import { loadTruckConfig, loadBlockConfig, getBlockConfigFiles } from './config-loader.js';
+// app.js — Application initialization, UI wiring, solver integration
+import { loadTruckConfig, loadBlockConfig } from './config-loader.js';
 import { TruckViewer } from './viewer3d.js';
 import { fetchAndParseCases } from './sheet-loader.js';
+import { wallPlannerSolve, buildDeptPriority, buildDeptColors } from './solver.js';
 
 let viewer;
 let truckConfig;
-let blockConfig;
+let blockConfig = null;  // null = universal mode (no legacy config)
 let currentTruckKey;
-let parsedCases = []; // cases from last sheet fetch (unplaced)
+let parsedCases = [];    // cases from last sheet fetch (unplaced)
+let autoDepartments = {};// auto-generated dept colors from cases
+let isUniversalMode = true;
 
 // ── DOM refs ──
 const truckSelect = document.getElementById('truck-select');
@@ -48,25 +51,27 @@ async function boot() {
     truckConfig = await loadTruckConfig();
     populateTruckSelect();
 
-    // Load default block config
+    // Populate config dropdown (universal default + legacy options)
     populateBlockSelect();
-    blockConfig = await loadBlockConfig(getBlockConfigFiles()[0]);
 
     // Initialize 3D viewer
     viewer = new TruckViewer(canvasWrap);
-    viewer.setDepartments(blockConfig.departments);
 
     // Set default truck
     currentTruckKey = truckConfig.default || '53ft';
     truckSelect.value = currentTruckKey;
     viewer.setTruck(truckConfig.trucks[currentTruckKey]);
 
-    // Populate dept filter from block config
-    populateDeptFilter();
-
     // Restore sheet URL from localStorage
     const savedUrl = localStorage.getItem('tlp-sheet-url');
     if (savedUrl) sheetUrlInput.value = savedUrl;
+
+    // Restore config mode from localStorage
+    const savedConfig = localStorage.getItem('tlp-config-mode');
+    if (savedConfig) {
+      blockSelect.value = savedConfig;
+      await switchConfigMode(savedConfig);
+    }
 
     // Wire up events
     wireEvents();
@@ -75,7 +80,7 @@ async function boot() {
     updateStats();
     updateLegend();
 
-    console.log('[TLP] App ready — empty truck loaded');
+    console.log('[TLP] App ready — empty truck loaded (universal mode)');
   } catch (err) {
     console.error('[TLP] Boot failed:', err);
   }
@@ -94,27 +99,62 @@ function populateTruckSelect() {
 
 function populateBlockSelect() {
   blockSelect.innerHTML = '';
-  getBlockConfigFiles().forEach(f => {
-    const opt = document.createElement('option');
-    opt.value = f;
-    // Derive label from filename: blocks-gb.json → "GB"
-    const label = f.replace('blocks-', '').replace('.json', '').toUpperCase();
-    opt.textContent = label;
-    blockSelect.appendChild(opt);
-  });
+  // Universal mode (default)
+  const uniOpt = document.createElement('option');
+  uniOpt.value = 'universal';
+  uniOpt.textContent = 'Universal (dimensions in sheet)';
+  blockSelect.appendChild(uniOpt);
+  // Legacy: Grands Ballets
+  const gbOpt = document.createElement('option');
+  gbOpt.value = 'blocks-gb.json';
+  gbOpt.textContent = 'Grands Ballets (legacy)';
+  blockSelect.appendChild(gbOpt);
 }
 
 function populateDeptFilter() {
-  // Keep "All Departments" as first option
   deptFilter.innerHTML = '<option value="ALL">All Departments</option>';
-  if (blockConfig && blockConfig.departments) {
-    for (const [code, dept] of Object.entries(blockConfig.departments)) {
-      const opt = document.createElement('option');
-      opt.value = code;
-      opt.textContent = `${code} - ${dept.label}`;
-      deptFilter.appendChild(opt);
+  const depts = getActiveDepartments();
+  for (const [code, dept] of Object.entries(depts)) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = `${code} - ${dept.label}`;
+    deptFilter.appendChild(opt);
+  }
+}
+
+// Get the active department map (legacy blockConfig or auto-generated)
+function getActiveDepartments() {
+  if (!isUniversalMode && blockConfig && blockConfig.departments) {
+    return blockConfig.departments;
+  }
+  return autoDepartments;
+}
+
+// Switch between universal and legacy config modes
+async function switchConfigMode(value) {
+  localStorage.setItem('tlp-config-mode', value);
+  if (value === 'universal') {
+    isUniversalMode = true;
+    blockConfig = null;
+    console.log('[TLP] Switched to universal mode');
+  } else {
+    isUniversalMode = false;
+    try {
+      blockConfig = await loadBlockConfig(value);
+      console.log(`[TLP] Loaded legacy config: ${value}`);
+    } catch (err) {
+      console.error(`[TLP] Failed to load ${value}:`, err);
+      blockConfig = null;
+      isUniversalMode = true;
     }
   }
+  viewer.setDepartments(getActiveDepartments());
+  populateDeptFilter();
+  viewer.clearCases();
+  parsedCases = [];
+  updateStats();
+  updateLegend();
+  updateCaseList();
 }
 
 // ── Wire UI events ──
@@ -124,27 +164,20 @@ function wireEvents() {
     currentTruckKey = truckSelect.value;
     viewer.clearCases();
     viewer.setTruck(truckConfig.trucks[currentTruckKey]);
-    updateStats();
-    updateLegend();
-    updateCaseList();
-    console.log(`[TLP] Truck changed to ${currentTruckKey}`);
-  });
-
-  // Block config change
-  blockSelect.addEventListener('change', async () => {
-    const file = blockSelect.value;
-    try {
-      blockConfig = await loadBlockConfig(file);
-      viewer.setDepartments(blockConfig.departments);
-      populateDeptFilter();
-      viewer.clearCases();
+    // Re-run solver if we have cases
+    if (parsedCases.length > 0) {
+      runSolver();
+    } else {
       updateStats();
       updateLegend();
       updateCaseList();
-      console.log(`[TLP] Block config changed to ${file}`);
-    } catch (err) {
-      console.error(`[TLP] Failed to load ${file}:`, err);
     }
+    console.log(`[TLP] Truck changed to ${currentTruckKey}`);
+  });
+
+  // Config mode change
+  blockSelect.addEventListener('change', async () => {
+    await switchConfigMode(blockSelect.value);
   });
 
   // Save sheet URL
@@ -185,7 +218,7 @@ function wireEvents() {
     tooltip.style.display = 'block';
     tooltip.innerHTML = `
       <div class="tt-name">${data.name}</div>
-      <div class="tt-dept" style="background:${viewer.getDeptHex(data.dept)}40;color:${viewer.getDeptHex(data.dept)}">${data.dept} - ${data.subgroup}</div>
+      <div class="tt-dept" style="background:${viewer.getDeptHex(data.dept)}40;color:${viewer.getDeptHex(data.dept)}">${data.dept} - ${data.subgroup || data.group || ''}</div>
       <div class="tt-row"><span class="tt-label">Position</span><span>X:${data.x}" Y:${data.y}" Z:${data.z}"</span></div>
       <div class="tt-row"><span class="tt-label">Size</span><span>${data.width}" x ${data.depth}" x ${data.height}"</span></div>
     `;
@@ -203,14 +236,12 @@ function wireEvents() {
     detailPanel.classList.add('active');
     detailContent.innerHTML = `
       <div class="detail-field"><span class="df-label">Name</span><span class="df-value">${data.name}</span></div>
-      <div class="detail-field"><span class="df-label">Block</span><span class="df-value" style="font-size:10px">${data.block_name}</span></div>
       <div class="detail-field"><span class="df-label">Dept</span><span class="df-value"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${viewer.getDeptHex(data.dept)};margin-right:4px;vertical-align:middle"></span>${data.dept}</span></div>
-      <div class="detail-field"><span class="df-label">Subgroup</span><span class="df-value">${data.subgroup}</span></div>
+      <div class="detail-field"><span class="df-label">Group</span><span class="df-value">${data.subgroup || data.group || ''}</span></div>
       <div class="detail-field"><span class="df-label">Position</span><span class="df-value">X:${data.x}" Y:${data.y}" Z:${data.z}"</span></div>
       <div class="detail-field"><span class="df-label">Dimensions</span><span class="df-value">${data.width}" x ${data.depth}" x ${data.height}"</span></div>
       <div class="detail-field"><span class="df-label">Rotation</span><span class="df-value">${data.rotation || 0}&deg;</span></div>
     `;
-    // Highlight in list
     document.querySelectorAll('.case-item').forEach(el => {
       el.classList.toggle('selected', parseInt(el.dataset.index) === index);
     });
@@ -240,14 +271,17 @@ async function fetchSheet() {
     loadingText.textContent = 'Parsing inventaire...';
     parsedCases = await fetchAndParseCases(input, blockConfig);
 
-    // Log to console as required by Phase 2
     console.log(`[TLP] Fetched ${parsedCases.length} cases from sheet`);
     console.table(parsedCases.slice(0, 10));
 
-    // Update sidebar case list (no 3D placement yet — Phase 3)
-    updateCaseList();
-    updateLegend();
-    updateStats();
+    // Auto-generate dept colors from cases (for universal mode or fallback)
+    autoDepartments = buildDeptColors(parsedCases);
+    viewer.setDepartments(getActiveDepartments());
+    populateDeptFilter();
+
+    // Run solver
+    loadingText.textContent = 'Placement en cours...';
+    runSolver();
 
     const now = new Date().toLocaleTimeString('fr-CA');
     sheetStatus.textContent = `${parsedCases.length} cases loaded — ${now}`;
@@ -259,10 +293,38 @@ async function fetchSheet() {
   }
 }
 
+// ── Run solver and display results ──
+function runSolver() {
+  if (parsedCases.length === 0) return;
+
+  const truck = truckConfig.trucks[currentTruckKey];
+  const deptPriority = buildDeptPriority(parsedCases);
+
+  const config = {
+    truckWidth: truck.width,
+    truckLength: truck.length,
+    truckHeight: truck.height,
+    deptPriority,
+    kbPatterns: [],  // No knowledge base in universal mode
+  };
+
+  console.log('[TLP] Running WallPlanner solver...', config);
+  const result = wallPlannerSolve(parsedCases, config);
+
+  console.log(`[TLP] Solver done: ${result.placements.length} placed, ${result.wallSections.length} walls`);
+
+  // Load placements into 3D viewer
+  viewer.loadData(result.placements);
+
+  // Update all UI
+  updateStats();
+  updateLegend();
+  updateCaseList();
+}
+
 // ── Update stats bar ──
 function updateStats() {
   const stats = viewer.getStats();
-  // Show parsed case count if no placements yet
   const caseCount = stats.caseCount || parsedCases.length;
   statCases.textContent = caseCount;
   statDepth.textContent = `${stats.maxDepth}" / ${stats.truckDepth}"`;
@@ -280,15 +342,18 @@ function getActiveCases() {
 // ── Update legend ──
 function updateLegend() {
   legendList.innerHTML = '';
-  if (!blockConfig || !blockConfig.departments) return;
+  const depts = getActiveDepartments();
+  if (!depts || Object.keys(depts).length === 0) return;
 
   const cases = getActiveCases();
   const counts = {};
   cases.forEach(p => {
-    counts[p.dept] = (counts[p.dept] || 0) + 1;
+    const d = p.dept || 'GENERAL';
+    counts[d] = (counts[d] || 0) + 1;
   });
 
-  for (const [code, dept] of Object.entries(blockConfig.departments)) {
+  for (const [code, dept] of Object.entries(depts)) {
+    if (!counts[code]) continue; // Only show depts that have cases
     const item = document.createElement('div');
     item.className = 'legend-item';
     item.innerHTML = `
@@ -329,7 +394,6 @@ function updateCaseList() {
       <span class="case-name" title="${item.name || item.nom}">${item.name || item.nom}</span>
       <span class="case-dims">${item.width}x${item.depth}x${item.height}</span>
     `;
-    // Only allow click-to-select if cases are placed in 3D
     if (hasPlacement) {
       el.addEventListener('click', () => viewer.selectCase(idx));
     }
