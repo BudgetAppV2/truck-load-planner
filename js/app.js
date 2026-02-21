@@ -3,8 +3,10 @@ import { loadTruckConfig, loadBlockConfig } from './config-loader.js';
 import { TruckViewer } from './viewer3d.js';
 import { fetchAndParseCases } from './sheet-loader.js';
 import { wallPlannerSolve, buildDeptPriority, buildDeptColors } from './solver.js';
+import { TruckEditor } from './editor.js';
 
 let viewer;
+let editor;
 let truckConfig;
 let blockConfig = null;  // null = universal mode (no legacy config)
 let currentTruckKey;
@@ -12,6 +14,7 @@ let parsedCases = [];    // cases from last sheet fetch (unplaced)
 let lastWallSections = [];// wall sections from last solver run
 let autoDepartments = {};// auto-generated dept colors from cases
 let isUniversalMode = true;
+let editorMode = false;
 
 // ── DOM refs ──
 const truckSelect = document.getElementById('truck-select');
@@ -26,6 +29,7 @@ const btnPerspective = document.getElementById('btn-perspective');
 const deptFilter = document.getElementById('dept-filter');
 const tooltip = document.getElementById('tooltip');
 const canvasWrap = document.getElementById('canvas-wrap');
+const btnEditor = document.getElementById('btn-editor');
 
 // Stats
 const statCases = document.getElementById('stat-cases');
@@ -58,6 +62,11 @@ async function boot() {
 
     // Initialize 3D viewer
     viewer = new TruckViewer(canvasWrap);
+
+    // Initialize editor
+    editor = new TruckEditor(viewer);
+    editor.onUpdate = updateEditorUI;
+    editor.onSelectionChange = updateEditorSelection;
 
     // Set default truck
     currentTruckKey = truckConfig.default || '53ft';
@@ -206,13 +215,36 @@ function wireEvents() {
     btnPerspective.textContent = isPerspective ? 'Perspective' : 'Orthographic';
   });
 
+  // Editor toggle
+  btnEditor.addEventListener('click', toggleEditor);
+  document.getElementById('ed-save').addEventListener('click', () => exitEditor(false));
+  document.getElementById('ed-cancel').addEventListener('click', () => exitEditor(true));
+  document.getElementById('ed-rotate').addEventListener('click', () => editor.rotate());
+  document.getElementById('ed-undo').addEventListener('click', () => editor.undo());
+  document.getElementById('ed-delete').addEventListener('click', () => editor.deleteSelected());
+  document.getElementById('ed-lock-x').addEventListener('click', () => toggleAxisLockBtn('x'));
+  document.getElementById('ed-lock-y').addEventListener('click', () => toggleAxisLockBtn('y'));
+  document.getElementById('ed-lock-z').addEventListener('click', () => toggleAxisLockBtn('z'));
+
   // Department filter
   deptFilter.addEventListener('change', (e) => {
     viewer.applyFilter(e.target.value);
     updateCaseList();
   });
 
-  // Case hover → tooltip
+  // Wire viewer hover/select events
+  wireViewerEvents();
+
+  // Close detail panel
+  detailClose.addEventListener('click', () => {
+    detailPanel.classList.remove('active');
+    viewer.deselectCase();
+    document.querySelectorAll('.case-item.selected').forEach(el => el.classList.remove('selected'));
+  });
+}
+
+// ── Wire viewer hover/select callbacks (called on boot and after editor exit) ──
+function wireViewerEvents() {
   viewer.onCaseHover = (data, event) => {
     if (!data) {
       tooltip.style.display = 'none';
@@ -234,7 +266,6 @@ function wireEvents() {
     tooltip.style.top = ty + 'px';
   };
 
-  // Case select → detail panel
   viewer.onCaseSelect = (index, data) => {
     detailPanel.classList.add('active');
     detailContent.innerHTML = `
@@ -249,13 +280,6 @@ function wireEvents() {
       el.classList.toggle('selected', parseInt(el.dataset.index) === index);
     });
   };
-
-  // Close detail panel
-  detailClose.addEventListener('click', () => {
-    detailPanel.classList.remove('active');
-    viewer.deselectCase();
-    document.querySelectorAll('.case-item.selected').forEach(el => el.classList.remove('selected'));
-  });
 }
 
 // ── Fetch and parse Google Sheet ──
@@ -304,9 +328,9 @@ function runSolver() {
   const deptPriority = buildDeptPriority(parsedCases);
 
   const config = {
-    truckWidth: truck.width,
-    truckLength: truck.length,
-    truckHeight: truck.height,
+    truckWidth: truck.interiorWidth,
+    truckLength: truck.interiorLength,
+    truckHeight: truck.interiorHeight,
     deptPriority,
     kbPatterns: [],  // No knowledge base in universal mode
   };
@@ -406,6 +430,117 @@ function updateCaseList() {
     caseList.appendChild(el);
   });
 }
+
+// ── Editor functions ──
+function toggleEditor() {
+  if (editorMode) {
+    exitEditor(false);
+  } else {
+    enterEditor();
+  }
+}
+
+function enterEditor() {
+  if (editorMode) return;
+  if (!lastWallSections.length) {
+    sheetStatus.textContent = 'Load cases first before editing';
+    return;
+  }
+  const ok = editor.enter(lastWallSections);
+  if (!ok) return;
+  editorMode = true;
+  viewer.editorActive = true;
+  btnEditor.classList.add('editor-active');
+  btnEditor.textContent = 'Editing...';
+  document.getElementById('editor-panel').style.display = '';
+  tooltip.style.display = 'none';
+  updateEditorUI();
+}
+
+function exitEditor(cancel) {
+  if (!editorMode) return;
+  const newWallSections = editor.exit(cancel);
+  editorMode = false;
+  viewer.editorActive = false;
+  btnEditor.classList.remove('editor-active');
+  btnEditor.textContent = 'Editor';
+  document.getElementById('editor-panel').style.display = 'none';
+  document.getElementById('ed-lock-x').classList.remove('active');
+  document.getElementById('ed-lock-y').classList.remove('active');
+  document.getElementById('ed-lock-z').classList.remove('active');
+
+  if (newWallSections) {
+    lastWallSections = newWallSections;
+    // Rebuild viewer from new wall sections
+    const allPlacements = newWallSections.flatMap(w => w.placements || []);
+    viewer.loadData(allPlacements);
+    viewer.showWallSections(newWallSections);
+  }
+
+  // Re-wire viewer events
+  wireViewerEvents();
+  updateStats();
+  updateLegend();
+  updateCaseList();
+}
+
+function updateEditorUI() {
+  const info = editor.getInfo();
+  const infoEl = document.getElementById('ed-info');
+  infoEl.innerHTML = `<span style="font-weight:600">${info.totalCases}</span> cases | ` +
+    `Depth: <span style="font-weight:600">${info.maxDepth}" / ${info.truckDepth}"</span> (${info.usagePct}%) | ` +
+    `Undo: ${info.undoSteps}`;
+  // Update axis lock buttons
+  document.getElementById('ed-lock-x').classList.toggle('active', editor.axisLock === 'x');
+  document.getElementById('ed-lock-y').classList.toggle('active', editor.axisLock === 'y');
+  document.getElementById('ed-lock-z').classList.toggle('active', editor.axisLock === 'z');
+}
+
+function updateEditorSelection(selectedData, selectionSize) {
+  const panel = document.getElementById('ed-selection-info');
+  if (!selectedData && (!selectionSize || selectionSize === 0)) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  if (selectionSize > 1) {
+    const allData = editor.getSelectionData();
+    const groups = [...new Set(allData.map(d => d.group || d.name))];
+    panel.innerHTML = `
+      <span style="font-weight:600;color:#FFD700">${selectionSize} cases selected</span>
+      <div style="font-size:10px">${groups.slice(0, 3).join(', ')}${groups.length > 3 ? '...' : ''}</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:4px">[Shift+click] add/remove | [Esc] deselect | Drag = move group</div>
+    `;
+  } else if (selectedData) {
+    panel.innerHTML = `
+      <span style="font-weight:600">${selectedData.name || selectedData.group || 'Case'}</span>
+      <div style="font-size:10px">Dims: ${selectedData.width}" x ${selectedData.depth}" x ${selectedData.height}" (rot: ${selectedData.rotation || 0}°)</div>
+      <div style="font-size:10px">Pos: X:${Math.round(selectedData.x)}" Y:${Math.round(selectedData.y)}" Z:${Math.round(selectedData.z)}"</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:4px">[R] rotate | [Ctrl+Z] undo | [Shift+click] multi | [X]/[Y]/[Z] lock axis</div>
+    `;
+  }
+}
+
+function toggleAxisLockBtn(axis) {
+  editor.setAxisLock(axis);
+  updateEditorUI();
+}
+
+// ── Debug access (for testing) ──
+window._tlp = {
+  get viewer() { return viewer; },
+  get editor() { return editor; },
+  get parsedCases() { return parsedCases; },
+  set parsedCases(v) { parsedCases = v; },
+  get lastWallSections() { return lastWallSections; },
+  set lastWallSections(v) { lastWallSections = v; },
+  runSolver,
+  updateStats,
+  updateLegend,
+  updateCaseList,
+  enterEditor,
+  exitEditor,
+};
 
 // ── Go ──
 boot();

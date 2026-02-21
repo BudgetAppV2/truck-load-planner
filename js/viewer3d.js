@@ -84,6 +84,7 @@ export class TruckViewer {
 
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
+    this.editorActive = false; // when true, suppress viewer click/hover
 
     // Callbacks
     this.onCaseSelect = null;  // (index, data) => {}
@@ -570,6 +571,7 @@ export class TruckViewer {
   }
 
   _onMouseMove(event) {
+    if (this.editorActive) return;
     const intersects = this._getIntersects(event);
 
     // Unhover previous
@@ -598,6 +600,7 @@ export class TruckViewer {
   }
 
   _onMouseClick(event) {
+    if (this.editorActive) return;
     const intersects = this._getIntersects(event);
     if (intersects.length > 0) {
       const mesh = intersects[0].object;

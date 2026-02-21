@@ -27,6 +27,7 @@
       <label>Sheet:</label>
       <input type="text" id="sheet-url" placeholder="Google Sheet URL or ID">
       <button id="btn-fetch-sheet" class="accent">Fetch Sheet</button>
+      <button id="btn-editor" title="Toggle editor mode — drag, rotate, reposition cases">Editor</button>
       <button id="btn-perspective" title="Toggle perspective / orthographic">Perspective</button>
       <button id="btn-reset" title="Reset camera">Reset</button>
       <button id="btn-top" title="Top-down view">Top</button>
@@ -38,6 +39,7 @@
   <!-- 3D Canvas -->
   <div id="canvas-wrap">
     <div id="tooltip"></div>
+    <div id="ed-box-select"></div>
     <div id="loading-overlay">
       <div class="loading-spinner"></div>
       <div class="loading-text" id="loading-text">Loading...</div>
@@ -52,6 +54,28 @@
       <select id="dept-filter" style="width:100%;background:var(--accent2);color:var(--text);border:1px solid var(--border);padding:5px 8px;border-radius:4px;font-size:12px">
         <option value="ALL">All Departments</option>
       </select>
+    </div>
+
+    <!-- Editor Panel (hidden when editor inactive) -->
+    <div class="sidebar-section" id="editor-panel" style="display:none">
+      <h3>Editor</h3>
+      <div id="ed-info" style="font-size:11px;margin-bottom:8px"></div>
+      <div id="ed-selection-info" style="font-size:11px;margin-bottom:8px;display:none"></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+        <button class="footer-btn" id="ed-rotate" title="Rotate selected [R]">Rotate</button>
+        <button class="footer-btn" id="ed-undo" title="Undo [Ctrl+Z]">Undo</button>
+        <button class="footer-btn" id="ed-delete" title="Delete selected [Del]">Delete</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:6px">
+        <button class="footer-btn ed-lock-btn" id="ed-lock-x" title="Lock to X axis [X]">X</button>
+        <button class="footer-btn ed-lock-btn" id="ed-lock-y" title="Lock to Y axis [Y]">Y</button>
+        <button class="footer-btn ed-lock-btn" id="ed-lock-z" title="Lock to Z axis [Z]">Z</button>
+        <span style="font-size:10px;color:var(--text-dim);align-self:center;margin-left:4px">Axis lock</span>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button class="footer-btn accent" id="ed-save">Save</button>
+        <button class="footer-btn" id="ed-cancel">Cancel</button>
+      </div>
     </div>
 
     <!-- Legend -->
