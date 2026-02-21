@@ -86,6 +86,7 @@ const COLUMN_ALIASES = {
   allow_rotation: ['ALLOW_ROTATION', 'ROTATION'],
   group:     ['GROUP', 'GROUPE', 'SUBGROUP', 'SOUS_GROUPE', 'SOUS-GROUPE', 'SOUS GROUPE'],
   camion:    ['CAMION', 'TRUCK'],
+  selection: ['SÉLECTION', 'SELECTION', 'SEL', 'SELECTED'],
   // Legacy GB columns
   index:     ['#', 'INDEX'],
   detail:    ['DETAIL', 'DÉTAIL'],
@@ -169,6 +170,9 @@ export function parseSheetData(gvizResponse, blockConfig) {
   for (const row of table.rows) {
     // Legacy: INCLUS filter
     if (colIdx.inclus !== undefined && !getBool(row, colIdx.inclus)) continue;
+
+    // Selection filter: if 'sélection' column exists, only include rows where it's TRUE
+    if (colIdx.selection !== undefined && !getBool(row, colIdx.selection)) continue;
 
     // Get name — required in universal mode
     const nom = getVal(row, colIdx.nom);
