@@ -13,6 +13,11 @@
   }
 }
 </script>
+<!-- jspreadsheet-ce v4 + jsuites dependency -->
+<script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsuites/dist/jsuites.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/jspreadsheet.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsuites/dist/jsuites.min.css" />
 </head>
 <body>
 <div id="app">
@@ -26,8 +31,7 @@
       <select id="block-select"></select>
       <label>Sheet:</label>
       <input type="text" id="sheet-url" placeholder="Google Sheet URL or ID">
-      <button id="btn-fetch-sheet" class="accent">Fetch Sheet</button>
-      <a href="https://docs.google.com/spreadsheets/d/1swoMSJRwQmigPlAYtqfYOF7hFMIMcQWMuxo8k-Y2fKA/copy" target="_blank" rel="noopener" class="footer-btn" title="Copy the template Google Sheet to your own Drive">Template</a>
+      <button id="btn-fetch-sheet">Fetch to Editor</button>
       <button id="btn-editor" title="Toggle editor mode — drag, rotate, reposition cases">Editor</button>
       <button id="btn-perspective" title="Toggle perspective / orthographic">Perspective</button>
       <button id="btn-reset" title="Reset camera">Reset</button>
@@ -35,6 +39,21 @@
       <button id="btn-front" title="Front view (door side)">Front</button>
       <button id="btn-side" title="Side view">Side</button>
     </div>
+  </div>
+
+  <!-- Spreadsheet Panel -->
+  <div id="spreadsheet-panel">
+    <div class="spreadsheet-toolbar">
+      <button id="btn-calculate" class="accent" title="Run solver with current spreadsheet data">Calculate</button>
+      <button id="btn-import-csv" title="Import CSV file">Import CSV</button>
+      <button id="btn-export-csv" title="Export spreadsheet as CSV">Export CSV</button>
+      <button id="btn-template" title="Reset spreadsheet to template example data">Template</button>
+      <div class="toolbar-spacer"></div>
+      <span id="sheet-row-count" style="font-size:10px;color:var(--text-dim)"></span>
+      <button id="btn-collapse-sheet" class="icon-btn" title="Collapse spreadsheet">&#9650;</button>
+    </div>
+    <div id="spreadsheet-container"></div>
+    <input type="file" id="csv-file-input" accept=".csv,.txt,.tsv" style="display:none">
   </div>
 
   <!-- 3D Canvas -->

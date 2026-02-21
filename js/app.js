@@ -4,17 +4,20 @@ import { TruckViewer } from './viewer3d.js';
 import { fetchAndParseCases } from './sheet-loader.js';
 import { wallPlannerSolve, buildDeptPriority, buildDeptColors } from './solver.js';
 import { TruckEditor } from './editor.js';
+import { SpreadsheetEditor } from './spreadsheet.js';
 
 let viewer;
 let editor;
+let spreadsheetEditor;
 let truckConfig;
 let blockConfig = null;  // null = universal mode (no legacy config)
 let currentTruckKey;
-let parsedCases = [];    // cases from last sheet fetch (unplaced)
+let parsedCases = [];    // cases from last calculation (unplaced)
 let lastWallSections = [];// wall sections from last solver run
 let autoDepartments = {};// auto-generated dept colors from cases
 let isUniversalMode = true;
 let editorMode = false;
+let spreadsheetCollapsed = false;
 
 // ── DOM refs ──
 const truckSelect = document.getElementById('truck-select');
@@ -68,6 +71,12 @@ async function boot() {
     editor.onUpdate = updateEditorUI;
     editor.onSelectionChange = updateEditorSelection;
 
+    // Initialize spreadsheet editor
+    spreadsheetEditor = new SpreadsheetEditor('spreadsheet-container');
+    spreadsheetEditor.onDataChange = () => {
+      updateRowCount();
+    };
+
     // Set default truck
     currentTruckKey = truckConfig.default || '53ft';
     truckSelect.value = currentTruckKey;
@@ -90,8 +99,9 @@ async function boot() {
     // Update stats for empty state
     updateStats();
     updateLegend();
+    updateRowCount();
 
-    console.log('[TLP] App ready — empty truck loaded (universal mode)');
+    console.log('[TLP] App ready — spreadsheet + empty truck loaded');
   } catch (err) {
     console.error('[TLP] Boot failed:', err);
   }
@@ -197,13 +207,30 @@ function wireEvents() {
     localStorage.setItem('tlp-sheet-url', sheetUrlInput.value);
   });
 
-  // Fetch sheet
-  btnFetch.addEventListener('click', () => fetchSheet());
+  // Fetch sheet → fills spreadsheet editor (not solver directly)
+  btnFetch.addEventListener('click', () => fetchSheetToEditor());
 
   // Also fetch on Enter key in the sheet URL input
   sheetUrlInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') fetchSheet();
+    if (e.key === 'Enter') fetchSheetToEditor();
   });
+
+  // Spreadsheet buttons
+  document.getElementById('btn-calculate').addEventListener('click', calculateFromSpreadsheet);
+  document.getElementById('btn-import-csv').addEventListener('click', () => {
+    document.getElementById('csv-file-input').click();
+  });
+  document.getElementById('btn-export-csv').addEventListener('click', () => spreadsheetEditor.exportCSV());
+  document.getElementById('btn-template').addEventListener('click', () => {
+    if (confirm('Reset spreadsheet to template? Current data will be replaced.')) {
+      spreadsheetEditor.resetToTemplate();
+      updateRowCount();
+    }
+  });
+  document.getElementById('btn-collapse-sheet').addEventListener('click', toggleSpreadsheetPanel);
+
+  // CSV file input handler
+  document.getElementById('csv-file-input').addEventListener('change', handleCSVFileSelect);
 
   // Camera buttons
   btnReset.addEventListener('click', () => viewer.resetView());
@@ -282,8 +309,8 @@ function wireViewerEvents() {
   };
 }
 
-// ── Fetch and parse Google Sheet ──
-async function fetchSheet() {
+// ── Fetch Google Sheet → fill spreadsheet editor ──
+async function fetchSheetToEditor() {
   const input = sheetUrlInput.value.trim();
   if (!input) {
     sheetStatus.textContent = 'Enter a Google Sheet URL or ID';
@@ -296,28 +323,93 @@ async function fetchSheet() {
 
   try {
     loadingText.textContent = 'Parsing inventaire...';
-    parsedCases = await fetchAndParseCases(input, blockConfig);
+    const cases = await fetchAndParseCases(input, blockConfig);
 
-    console.log(`[TLP] Fetched ${parsedCases.length} cases from sheet`);
-    console.table(parsedCases.slice(0, 10));
+    console.log(`[TLP] Fetched ${cases.length} cases from sheet`);
 
-    // Auto-generate dept colors from cases (for universal mode or fallback)
-    autoDepartments = buildDeptColors(parsedCases);
-    viewer.setDepartments(getActiveDepartments());
-    populateDeptFilter();
-
-    // Run solver
-    loadingText.textContent = 'Placement en cours...';
-    runSolver();
+    // Fill spreadsheet editor with fetched data (user can review/edit before calculating)
+    spreadsheetEditor.loadFromCaseObjects(cases);
+    updateRowCount();
 
     const now = new Date().toLocaleTimeString('fr-CA');
-    sheetStatus.textContent = `${parsedCases.length} cases loaded — ${now}`;
+    sheetStatus.textContent = `${cases.length} cases loaded in editor — click Calculate`;
+
+    // Expand spreadsheet if collapsed
+    if (spreadsheetCollapsed) toggleSpreadsheetPanel();
   } catch (err) {
     console.error('[TLP] Sheet fetch error:', err);
     sheetStatus.textContent = 'Error: ' + err.message;
   } finally {
     loadingOverlay.classList.remove('active');
   }
+}
+
+// ── Calculate from spreadsheet ──
+function calculateFromSpreadsheet() {
+  const cases = spreadsheetEditor.convertToCaseObjects();
+
+  if (cases.length === 0) {
+    sheetStatus.textContent = 'No valid cases (check sélection and dimensions)';
+    return;
+  }
+
+  // Update parsedCases for stats/UI
+  parsedCases = cases;
+
+  // Auto-generate dept colors from spreadsheet data
+  autoDepartments = buildDeptColors(cases);
+  viewer.setDepartments(getActiveDepartments());
+  populateDeptFilter();
+
+  // Run solver
+  loadingOverlay.classList.add('active');
+  loadingText.textContent = 'Placement en cours...';
+
+  try {
+    runSolver();
+    sheetStatus.textContent = `${cases.length} cases calculated`;
+  } catch (err) {
+    console.error('[TLP] Solver error:', err);
+    sheetStatus.textContent = 'Error: ' + err.message;
+  } finally {
+    loadingOverlay.classList.remove('active');
+  }
+}
+
+// ── CSV import handling ──
+function handleCSVFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      spreadsheetEditor.importCSV(e.target.result);
+      updateRowCount();
+      sheetStatus.textContent = `Imported ${file.name}`;
+      if (spreadsheetCollapsed) toggleSpreadsheetPanel();
+    } catch (err) {
+      console.error('[TLP] CSV import error:', err);
+      sheetStatus.textContent = 'CSV import failed: ' + err.message;
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = ''; // reset so same file can be re-imported
+}
+
+// ── Toggle spreadsheet panel ──
+function toggleSpreadsheetPanel() {
+  spreadsheetCollapsed = !spreadsheetCollapsed;
+  spreadsheetEditor.collapse(spreadsheetCollapsed);
+  const btn = document.getElementById('btn-collapse-sheet');
+  btn.innerHTML = spreadsheetCollapsed ? '&#9660;' : '&#9650;';
+  btn.title = spreadsheetCollapsed ? 'Expand spreadsheet' : 'Collapse spreadsheet';
+}
+
+// ── Update row count display ──
+function updateRowCount() {
+  const el = document.getElementById('sheet-row-count');
+  if (el) el.textContent = `${spreadsheetEditor.getRowCount()} rows`;
 }
 
 // ── Run solver and display results ──
@@ -443,7 +535,7 @@ function toggleEditor() {
 function enterEditor() {
   if (editorMode) return;
   if (!lastWallSections.length) {
-    sheetStatus.textContent = 'Load cases first before editing';
+    sheetStatus.textContent = 'Calculate first before editing in 3D';
     return;
   }
   const ok = editor.enter(lastWallSections);
@@ -530,11 +622,13 @@ function toggleAxisLockBtn(axis) {
 window._tlp = {
   get viewer() { return viewer; },
   get editor() { return editor; },
+  get spreadsheetEditor() { return spreadsheetEditor; },
   get parsedCases() { return parsedCases; },
   set parsedCases(v) { parsedCases = v; },
   get lastWallSections() { return lastWallSections; },
   set lastWallSections(v) { lastWallSections = v; },
   runSolver,
+  calculateFromSpreadsheet,
   updateStats,
   updateLegend,
   updateCaseList,
