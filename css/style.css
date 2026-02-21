@@ -1,0 +1,103 @@
+/* Truck Load Planner — Style */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1a2e;--panel:#16213e;--border:#0f3460;--text:#e0e0e0;
+  --text-dim:#8899aa;--accent:#e94560;--accent2:#0f3460;
+}
+html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+#app{display:grid;grid-template-columns:1fr 280px;grid-template-rows:auto 1fr auto;height:100vh;gap:0}
+
+/* Header */
+#header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border);z-index:10}
+#header h1{font-size:16px;font-weight:600;letter-spacing:0.5px}
+#header h1 span{color:var(--accent);font-weight:700}
+.toolbar{display:flex;gap:8px;align-items:center}
+.toolbar button,.toolbar select,.toolbar input{
+  background:var(--accent2);color:var(--text);border:1px solid var(--border);
+  padding:5px 12px;border-radius:4px;font-size:12px;cursor:pointer;transition:background .15s
+}
+.toolbar button:hover,.toolbar select:hover{background:#1a4a8a}
+.toolbar select{padding-right:24px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23e0e0e0'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.toolbar label{font-size:11px;color:var(--text-dim)}
+.toolbar input[type="text"]{width:280px;font-size:11px}
+
+/* 3D Canvas */
+#canvas-wrap{grid-column:1;grid-row:2;position:relative;overflow:hidden;background:#0d1117}
+#canvas-wrap canvas{display:block;width:100%!important;height:100%!important}
+#tooltip{
+  position:absolute;pointer-events:none;display:none;
+  background:rgba(22,33,62,0.95);border:1px solid var(--border);border-radius:6px;
+  padding:10px 14px;font-size:12px;line-height:1.6;color:var(--text);
+  box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:260px;z-index:20;
+  backdrop-filter:blur(4px)
+}
+#tooltip .tt-name{font-weight:700;font-size:13px;margin-bottom:2px}
+#tooltip .tt-dept{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-bottom:4px}
+#tooltip .tt-row{display:flex;justify-content:space-between;gap:12px}
+#tooltip .tt-label{color:var(--text-dim)}
+
+/* Loading overlay */
+#loading-overlay{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  background:rgba(13,17,23,0.85);display:none;
+  justify-content:center;align-items:center;z-index:100;
+  flex-direction:column;gap:12px
+}
+#loading-overlay.active{display:flex}
+.loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--text-dim)}
+
+/* Sidebar */
+#sidebar{grid-column:2;grid-row:2;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.sidebar-section{background:rgba(15,52,96,0.3);border:1px solid var(--border);border-radius:6px;padding:10px}
+.sidebar-section h3{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+
+/* Legend */
+.legend-item{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px}
+.legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;border:1px solid rgba(255,255,255,0.15)}
+.legend-count{margin-left:auto;color:var(--text-dim);font-size:11px}
+
+/* Detail panel */
+#detail-panel{display:none}
+#detail-panel.active{display:block}
+#detail-panel .detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+#detail-panel .detail-close{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:3px}
+#detail-panel .detail-close:hover{background:rgba(255,255,255,0.1);color:var(--text)}
+.detail-field{display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.05)}
+.detail-field:last-child{border-bottom:none}
+.detail-field .df-label{color:var(--text-dim)}
+.detail-field .df-value{font-weight:500;text-align:right}
+
+/* Case list */
+#case-list{max-height:200px;overflow-y:auto}
+.case-item{display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;border-radius:3px;cursor:pointer;transition:background .1s}
+.case-item:hover{background:rgba(255,255,255,0.08)}
+.case-item.selected{background:rgba(233,69,96,0.2);border:1px solid var(--accent)}
+.case-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.case-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-dims{color:var(--text-dim);font-size:10px;white-space:nowrap}
+
+/* Footer stats */
+#footer{grid-column:1/-1;display:flex;align-items:center;gap:24px;padding:6px 16px;background:var(--panel);border-top:1px solid var(--border);font-size:12px}
+.stat{display:flex;align-items:center;gap:6px}
+.stat-label{color:var(--text-dim)}
+.stat-value{font-weight:600}
+.stat-bar{width:120px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden}
+.stat-bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.footer-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.footer-btn{
+  background:var(--accent2);color:var(--text);border:1px solid var(--border);
+  padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:background .15s;
+  text-decoration:none;display:inline-flex;align-items:center;gap:4px
+}
+.footer-btn:hover{background:#1a4a8a}
+.footer-btn.accent{background:var(--accent);border-color:var(--accent)}
+.footer-btn.accent:hover{background:#c53050}
+#sheet-status{font-size:10px;color:var(--text-dim);max-width:200px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#1a5a9a}
