@@ -214,23 +214,23 @@ From `truck-viewer.html` (line numbers approximate):
 - [x] URL input field with localStorage persistence
 - [x] Cases parsed and displayed in sidebar
 
-### Phase 3: Solver Integration (UNIVERSAL)
-- [ ] Extract WallPlanner to solver.js from source lines ~2112-3146
-- [ ] **Universal input**: solver takes case objects with dimensions directly (no BLOCK_DIMS lookup)
-- [ ] **Grouping by `group` field** instead of subgroup/block_name mapping
-- [ ] **Auto-generate deptPriority** from unique dept values in cases
-- [ ] **Skip KB recipes** (Phase 3A) when no knowledge base loaded
-- [ ] **Floor panels** triggered by isFloor flag on case objects
-- [ ] **Sheet parser update**: read dimensions from sheet directly, expand qty, set defaults
-- [ ] Wire up: Fetch Sheet → solver → 3D rendering → stats update
-- [ ] Test with GB sheet (legacy mode) AND a fresh universal sheet
+### Phase 3: Solver Integration (UNIVERSAL) ✅ DONE
+- [x] Extract WallPlanner to solver.js from source lines ~2112-3146
+- [x] **Universal input**: solver takes case objects with dimensions directly (no BLOCK_DIMS lookup)
+- [x] **Grouping by `group` field** instead of subgroup/block_name mapping
+- [x] **Auto-generate deptPriority** from unique dept values in cases
+- [x] **Skip KB recipes** (Phase 3A) when no knowledge base loaded
+- [x] **Floor panels** triggered by isFloor flag on case objects
+- [x] **Sheet parser update**: read dimensions from sheet directly, expand qty, set defaults
+- [x] Wire up: Fetch Sheet → solver → 3D rendering → stats update
+- [x] Test with GB sheet (legacy mode) AND a fresh universal sheet
 
-### Phase 4: Polish
-- [ ] Department color legend (auto from dept values)
-- [ ] Wall section overlays in 3D
-- [ ] README rewrite for universal audience
-- [ ] Sheet template documentation + example sheet
-- [ ] Git tag v1.0
+### Phase 4: Polish ✅ DONE
+- [x] Department color legend (auto from dept values)
+- [x] Wall section overlays in 3D
+- [x] README rewrite for universal audience
+- [x] Sheet template documentation + example sheet
+- [x] Git tag v1.0
 
 ### Phase 5: Future (v2)
 - [ ] Manual editor (drag-drop)

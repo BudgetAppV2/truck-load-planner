@@ -9,6 +9,7 @@ let truckConfig;
 let blockConfig = null;  // null = universal mode (no legacy config)
 let currentTruckKey;
 let parsedCases = [];    // cases from last sheet fetch (unplaced)
+let lastWallSections = [];// wall sections from last solver run
 let autoDepartments = {};// auto-generated dept colors from cases
 let isUniversalMode = true;
 
@@ -28,6 +29,7 @@ const canvasWrap = document.getElementById('canvas-wrap');
 
 // Stats
 const statCases = document.getElementById('stat-cases');
+const statWalls = document.getElementById('stat-walls');
 const statDepth = document.getElementById('stat-depth');
 const statFill = document.getElementById('stat-fill');
 const statBarFill = document.getElementById('stat-bar-fill');
@@ -152,6 +154,7 @@ async function switchConfigMode(value) {
   populateDeptFilter();
   viewer.clearCases();
   parsedCases = [];
+  lastWallSections = [];
   updateStats();
   updateLegend();
   updateCaseList();
@@ -312,9 +315,11 @@ function runSolver() {
   const result = wallPlannerSolve(parsedCases, config);
 
   console.log(`[TLP] Solver done: ${result.placements.length} placed, ${result.wallSections.length} walls`);
+  lastWallSections = result.wallSections;
 
   // Load placements into 3D viewer
   viewer.loadData(result.placements);
+  viewer.showWallSections(result.wallSections);
 
   // Update all UI
   updateStats();
@@ -327,6 +332,7 @@ function updateStats() {
   const stats = viewer.getStats();
   const caseCount = stats.caseCount || parsedCases.length;
   statCases.textContent = caseCount;
+  statWalls.textContent = lastWallSections.length;
   statDepth.textContent = `${stats.maxDepth}" / ${stats.truckDepth}"`;
   statBarFill.style.width = stats.depthPct + '%';
   statBarFill.style.background = stats.depthPct > 90 ? '#e94560' : stats.depthPct > 70 ? '#f0a030' : '#4CAF50';

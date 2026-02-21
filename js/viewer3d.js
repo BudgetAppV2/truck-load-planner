@@ -75,6 +75,7 @@ export class TruckViewer {
     this.truck = { width: 98, depth: 624, height: 108 };
     this.caseMeshes = [];
     this.placementData = [];
+    this.wallOverlays = null; // group for wall section overlays
     this.selectedMesh = null;
     this.hoveredMesh = null;
     this.isPerspective = true;
@@ -321,6 +322,82 @@ export class TruckViewer {
     });
   }
 
+  // ── Public: show wall section overlays on the floor ──
+  showWallSections(wallSections) {
+    this.clearWallSections();
+    if (!wallSections || wallSections.length === 0) return;
+
+    this.wallOverlays = new THREE.Group();
+    this.wallOverlays.userData.isWallOverlay = true;
+
+    // Alternating stripe colors for visibility
+    const stripeColors = [0x4488cc, 0x44cc88];
+    const w = this.truck.width;
+
+    wallSections.forEach((ws, i) => {
+      const depth = ws.yEnd - ws.yStart;
+      if (depth <= 0) return;
+
+      // Floor band (thin plane just above the floor)
+      const bandGeo = new THREE.PlaneGeometry(w, depth);
+      const bandMat = new THREE.MeshBasicMaterial({
+        color: stripeColors[i % 2],
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const band = new THREE.Mesh(bandGeo, bandMat);
+      band.rotation.x = -Math.PI / 2;
+      band.position.set(w / 2, 0.15, ws.yStart + depth / 2);
+      this.wallOverlays.add(band);
+
+      // Wall boundary line at yStart
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+        0, 0.2, ws.yStart, w, 0.2, ws.yStart,
+      ], 3));
+      const lineMat = new THREE.LineBasicMaterial({
+        color: stripeColors[i % 2], transparent: true, opacity: 0.5,
+      });
+      this.wallOverlays.add(new THREE.LineSegments(lineGeo, lineMat));
+
+      // Side edge markers (vertical lines at truck walls)
+      const edgeGeo = new THREE.BufferGeometry();
+      edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+        -0.5, 0, ws.yStart, -0.5, ws.caseCount > 0 ? Math.min(ws.yEnd - ws.yStart, 108) : 24, ws.yStart,
+        w + 0.5, 0, ws.yStart, w + 0.5, ws.caseCount > 0 ? Math.min(ws.yEnd - ws.yStart, 108) : 24, ws.yStart,
+      ], 3));
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: stripeColors[i % 2], transparent: true, opacity: 0.3,
+      });
+      this.wallOverlays.add(new THREE.LineSegments(edgeGeo, edgeMat));
+
+      // Label: wall name + fill %
+      const label = ws.label.length > 20 ? ws.label.substring(0, 18) + '..' : ws.label;
+      const labelText = `${label} ${ws.fillPct}%`;
+      addTextSprite(this.wallOverlays, labelText, w / 2, -6, ws.yStart + depth / 2, stripeColors[i % 2], 8);
+    });
+
+    this.scene.add(this.wallOverlays);
+  }
+
+  // ── Public: clear wall section overlays ──
+  clearWallSections() {
+    if (this.wallOverlays) {
+      this.scene.remove(this.wallOverlays);
+      // Dispose geometries and materials
+      this.wallOverlays.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (child.material.map) child.material.map.dispose();
+          child.material.dispose();
+        }
+      });
+      this.wallOverlays = null;
+    }
+  }
+
   // ── Public: clear all cases ──
   clearCases() {
     this.caseMeshes.forEach(m => {
@@ -329,6 +406,7 @@ export class TruckViewer {
     });
     this.caseMeshes = [];
     this.placementData = [];
+    this.clearWallSections();
     this.selectedMesh = null;
     this.hoveredMesh = null;
   }

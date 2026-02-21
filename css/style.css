@@ -17,6 +17,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
   padding:5px 12px;border-radius:4px;font-size:12px;cursor:pointer;transition:background .15s
 }
 .toolbar button:hover,.toolbar select:hover{background:#1a4a8a}
+.toolbar button.accent{background:var(--accent);border-color:var(--accent)}
+.toolbar button.accent:hover{background:#c53050}
 .toolbar select{padding-right:24px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23e0e0e0'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
 .toolbar label{font-size:11px;color:var(--text-dim)}
 .toolbar input[type="text"]{width:280px;font-size:11px}

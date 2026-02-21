@@ -1,107 +1,146 @@
-# 🚛 Truck Load Planner
+# Truck Load Planner
 
-A 3D truck loading optimizer for touring productions — theater, concerts, events.
+A 3D truck loading optimizer. Pack road cases, boxes, or freight into trucks — automatically.
 
-## What it does
+Works for theater, concerts, events, moving companies, freight — anyone with boxes and a truck. No proprietary config needed — just a Google Sheet with your cases and their dimensions.
 
-Given a Google Sheet inventory of road cases (flight cases), this tool:
-1. **Automatically plans wall configurations** using bin-packing algorithms
-2. **Visualizes the load in 3D** with an interactive Three.js viewer
-3. **Validates physical constraints** (overlaps, flat-face, truck bounds)
-4. **Orders walls for stability** (heaviest/tallest at back, lightest at door)
+## How It Works
+
+1. **Create a Google Sheet** with your cases (name, width, depth, height)
+2. **Open the app** in a browser — an empty 3D truck appears
+3. **Paste your Sheet URL** and click Fetch Sheet
+4. The solver **automatically plans wall configurations** using bin-packing algorithms
+5. The load is **visualized in 3D** with colored departments, wall overlays, and stats
 
 ## Quick Start
 
-1. **Copy the template sheet**: [Template Sheet](TODO: link)
-2. **Add your cases** — fill in subgroup, name, width, depth, height
-3. **Open `viewer/truck-viewer.html`** in a browser
-4. **Paste your Sheet URL** and click Load
+1. Create a Google Sheet with these columns:
+
+   | nom | largeur | profondeur | hauteur |
+   |-----|---------|------------|---------|
+   | Alpha spot | 31 | 29 | 36 |
+   | Sound rack | 38 | 20 | 48 |
+
+2. Share the sheet: **File > Share > Publish to web**
+3. Open `index.html` in a browser (or serve with any HTTP server)
+4. Select truck size, paste the Sheet URL, click **Fetch Sheet**
+
+That's it. The sheet IS the configuration — dimensions are right there in each row.
 
 ## Google Sheet Format
 
-Your sheet needs these columns:
+### Required Columns
 
 | Column | Description | Example |
 |--------|-------------|---------|
-| subgroup | Case category | `Alpha (moving)` |
-| nom | Case name | `ALPHA #1` |
-| block_name | Block type identifier | `CAM_LX_Alpha` |
-| width | Width in inches | `31` |
-| depth | Depth in inches | `29` |
-| height | Height in inches | `36` |
-| num_caisse | Case ID number | `C-001` |
-| dept | Department | `LX` |
+| **nom** | Case name | `Alpha spot` |
+| **largeur** | Width in inches (side facing truck wall) | `31` |
+| **profondeur** | Depth in inches (into the truck) | `29` |
+| **hauteur** | Height in inches | `36` |
+
+### Optional Columns
+
+| Column | What it does | Default |
+|--------|-------------|---------|
+| **dept** | Department — color-codes cases in 3D | `GENERAL` |
+| **qty** | Quantity — duplicates the row N times | `1` |
+| **stackable** | Can other cases stack on this? | `false` |
+| **max_stack** | Maximum stack height | `1` |
+| **is_floor** | Floor panel — loads first at back of truck | `false` |
+| **allow_rotation** | Can the solver rotate this 90 degrees? | `true` |
+| **group** | Group name — keeps cases together in same wall | (none) |
+| **camion** | Truck assignment number | (none) |
+
+Boolean columns accept: `oui`, `yes`, `true`, `1`
+
+### Column Name Aliases
+
+Column names are flexible (case-insensitive). Use whichever language you prefer:
+
+- **nom**: `nom`, `name`, `case_name`, `description`
+- **largeur**: `largeur`, `width`, `w`, `larg`
+- **profondeur**: `profondeur`, `depth`, `d`, `prof`
+- **hauteur**: `hauteur`, `height`, `h`, `haut`
+- **dept**: `dept`, `department`
+- **group**: `group`, `groupe`, `subgroup`, `sous-groupe`
 
 ## Truck Sizes
 
-| Size | Interior Width | Interior Length | Interior Height |
-|------|---------------|----------------|-----------------|
-| 20'  | 98" | 240" | 96" |
-| 36'  | 98" | 432" | 96" |
-| 53'  | 98" | 624" | 108" |
+| Size | Width | Length | Height |
+|------|-------|--------|--------|
+| 20' | 98" | 240" | 96" |
+| 36' | 98" | 432" | 96" |
+| 53' | 98" | 624" | 108" |
 
-## Configuration
+## 3D Viewer Controls
 
-### Adding your own cases
+- **Left-click drag** — rotate the view
+- **Right-click drag** or **middle-click drag** — pan
+- **Scroll wheel** — zoom
+- **Click a case** — select it, see details in the sidebar
+- **Hover** — tooltip with case info
 
-Edit the `BLOCK_DIMS` object in `viewer/truck-viewer.html` to define your case types:
+Camera presets: **Reset**, **Top**, **Front**, **Side**, **Perspective/Orthographic**
 
-```javascript
-'YOUR_BLOCK_NAME': {w:31, d:29, h:36, rot:0, stackable:true, maxStack:2},
-```
+## Algorithm
 
-Properties:
-- `w`: width (inches) — the side that faces the truck wall
-- `d`: depth (inches) — how far into the truck the case extends  
-- `h`: height (inches)
-- `rot`: default rotation (0 or 90)
-- `stackable`: can cases be stacked on this type?
-- `maxStack`: maximum stack height (1 = no stacking)
-- `isFloor`: (optional) marks as floor panel — placed first with load bars
+The WallPlanner solver uses a multi-phase bin-packing approach:
 
-### Subgroup mapping
-
-Map your sheet's subgroup names to block types in `SUBGROUP_BLOCK`:
-
-```javascript
-'Your Subgroup Name': 'YOUR_BLOCK_NAME',
-```
-
-### Department mapping
-
-Map subgroups to departments in `SUBGROUP_DEPT`:
-
-```javascript
-'Your Subgroup Name': 'LX',  // or SON, CARP, VDO, etc.
-```
-
-## Algorithm Overview
-
-The WallPlanner uses a multi-phase approach:
-
-1. **Phase 0** — Split mixed subgroups into uniform block types
-2. **Phase 1.5** — Floor panels placed first (with load bar spacers)
-3. **Phase 2** — Build full walls from single subgroups
-4. **Phase 2.5** — Fill gaps in full walls with compatible orphans
-5. **Phase 3A** — Match known recipes from the knowledge base
-6. **Phase 3B** — Rotation-aware depth-grouped FFD for remaining orphans
-7. **Phase 3C** — Absorb very weak walls into stronger ones
-8. **Phase 4** — Score-based wall ordering (height × fill%, dept, reliability)
-9. **Phase 5** — Final coordinate calculation with spillover recovery
+1. **Split mixed groups** — separate cases with different dimensions
+2. **Floor panels first** — `is_floor` cases placed at back with load bars
+3. **Build full walls** — single-group grids packed to truck width
+4. **Gap-fill** — fit orphan cases into wall gaps (same department)
+5. **Depth-grouped FFD** — rotation-aware first-fit-decreasing for remaining cases
+6. **Absorb weak walls** — merge underfilled walls into stronger ones
+7. **Stability ordering** — tallest/fullest walls at back (cab), lightest at door
+8. **Coordinate calculation** — final placement with spillover recovery
+9. **Validation** — checks overlaps, bounds, flat-face constraints
 
 ### Key Constraints
 
-- **Flat-face criterion**: All cases in a wall must have similar depth (±2" ideal, ±8" acceptable) so the door-facing surface is flat for strapping
-- **Truck width**: 98" interior — no case can exceed this
-- **Stacking**: Max 2 high, same block type only
-- **Stability**: Walls ordered tallest→shortest from cab to door
+- **Flat-face**: cases in a wall must have similar depth (ideal ±2", max ±8") for strapping
+- **No overlaps**: physical constraint validation catches any issues
+- **Stacking**: only cases with `stackable = true`, limited by `max_stack`
+- **Stability**: walls sorted by height x fill ratio, heaviest at back
 
-## Development
+## Running the App
 
-Built with:
-- Three.js for 3D visualization
-- Vanilla JavaScript for the solver (no build step needed)
-- Python CLI for AutoCAD LISP generation
+No build step needed. Just serve the files:
+
+```bash
+# Option 1: Python
+python3 -m http.server 8080
+
+# Option 2: Node
+npx serve .
+
+# Option 3: Just open index.html in your browser
+# (JSONP sheet fetch works from file:// too)
+```
+
+## Project Structure
+
+```
+truck-load-planner/
+├── index.html            ← Main app
+├── css/style.css         ← Styles
+├── js/
+│   ├── app.js            ← App init, UI wiring
+│   ├── solver.js         ← WallPlanner engine
+│   ├── viewer3d.js       ← Three.js 3D rendering
+│   ├── sheet-loader.js   ← Google Sheet fetch + parsing
+│   └── config-loader.js  ← Truck config loader
+├── config/
+│   └── trucks.json       ← Truck dimensions
+└── templates/
+    └── SHEET_TEMPLATE.md ← How to create a compatible sheet
+```
+
+## Built With
+
+- [Three.js](https://threejs.org/) — 3D visualization
+- Vanilla JavaScript — no build tools, no framework
+- Google Visualization API (JSONP) — sheet data fetching
 
 ## License
 
