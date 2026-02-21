@@ -60,6 +60,7 @@ export class SpreadsheetEditor {
     this.jss = null; // jspreadsheet instance
     this.deptSource = [...DEFAULT_DEPT_SOURCE];
     this.onDataChange = null; // callback: () => {}
+    this._lastCheckboxRow = null; // for shift+click range selection
 
     this._init();
   }
@@ -101,6 +102,9 @@ export class SpreadsheetEditor {
 
     // Apply initial row colors
     this._applyAllRowStyles();
+
+    // Shift+click range selection on sélection column
+    this._setupShiftClickHandler(container);
 
     console.log('[Spreadsheet] Initialized with', data.length, 'rows');
   }
@@ -556,5 +560,54 @@ export class SpreadsheetEditor {
       const t = item.title.toLowerCase();
       return !t.includes('column') && !t.includes('colonne');
     });
+  }
+
+  // ════════════════════════════════════════════════════
+  // PRIVATE: Shift+click range selection on sélection column
+  // ════════════════════════════════════════════════════
+
+  _setupShiftClickHandler(container) {
+    container.addEventListener('mousedown', (e) => {
+      // Only care about clicks on sélection column (col index 11)
+      const td = e.target.closest('td');
+      if (!td) return;
+
+      // Get cell coordinates from jspreadsheet data attributes
+      const x = td.getAttribute('data-x');
+      const y = td.getAttribute('data-y');
+      if (x === null || y === null) return;
+
+      const col = parseInt(x);
+      const row = parseInt(y);
+
+      // Only handle clicks on the sélection column
+      if (col !== COL.SELECTION) {
+        // Track last clicked row for any column (but only act on shift+click for selection)
+        return;
+      }
+
+      if (e.shiftKey && this._lastCheckboxRow !== null) {
+        // Shift+click: toggle range between _lastCheckboxRow and current row
+        e.preventDefault();
+        e.stopPropagation();
+
+        const from = Math.min(this._lastCheckboxRow, row);
+        const to = Math.max(this._lastCheckboxRow, row);
+
+        // Determine target state from the anchor row
+        const data = this.jss.getData();
+        const anchorVal = data[this._lastCheckboxRow]?.[COL.SELECTION];
+        const targetState = anchorVal === true || anchorVal === 'true';
+
+        for (let r = from; r <= to; r++) {
+          this.jss.setValueFromCoords(COL.SELECTION, r, targetState, false);
+          this._applyRowStyle(r);
+        }
+        this._afterChanges();
+      } else {
+        // Normal click: record this row as anchor
+        this._lastCheckboxRow = row;
+      }
+    }, true); // Use capture to intercept before jspreadsheet
   }
 }

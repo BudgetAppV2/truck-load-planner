@@ -5,7 +5,7 @@
   --text-dim:#8899aa;--accent:#e94560;--accent2:#0f3460;
 }
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
-#app{display:grid;grid-template-columns:1fr 280px;grid-template-rows:auto auto 1fr auto;height:100vh;gap:0}
+#app{display:grid;grid-template-columns:1fr 280px;grid-template-rows:auto 1fr auto;height:100vh;gap:0}
 
 /* Header */
 #header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border);z-index:10}
@@ -23,15 +23,36 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
 .toolbar label{font-size:11px;color:var(--text-dim)}
 .toolbar input[type="text"]{width:280px;font-size:11px}
 
+/* Content Area — holds spreadsheet + splitter + 3D canvas */
+#content-area{
+  grid-column:1;grid-row:2;
+  display:flex;flex-direction:column;
+  overflow:hidden;min-height:0
+}
+#content-area.side-by-side{flex-direction:row}
+
 /* Spreadsheet Panel */
 #spreadsheet-panel{
-  grid-column:1/-1;grid-row:2;
   display:flex;flex-direction:column;
   background:var(--panel);border-bottom:1px solid var(--border);
-  height:300px;min-height:42px;
-  transition:height 0.2s ease;overflow:hidden
+  flex:0 0 auto;height:300px;min-height:42px;
+  overflow:hidden
 }
-#spreadsheet-panel.collapsed{height:42px}
+#spreadsheet-panel.collapsed{height:42px!important;flex-basis:42px!important}
+#content-area.side-by-side #spreadsheet-panel{
+  height:auto;border-bottom:none;border-right:1px solid var(--border);
+  width:50%;flex:0 0 auto
+}
+#content-area.side-by-side #spreadsheet-panel.collapsed{width:42px!important;flex-basis:42px!important;height:auto!important}
+
+/* Splitter */
+#splitter{
+  flex:0 0 5px;background:var(--border);cursor:row-resize;
+  position:relative;z-index:5;
+  transition:background .15s
+}
+#splitter:hover,#splitter.active{background:var(--accent)}
+#content-area.side-by-side #splitter{cursor:col-resize}
 .spreadsheet-toolbar{
   display:flex;align-items:center;gap:8px;
   padding:8px 16px;
@@ -125,7 +146,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
 #spreadsheet-container .jexcel_pagination{background:#0d1520!important;color:#ccc!important;border-color:#1a2332!important}
 
 /* 3D Canvas */
-#canvas-wrap{grid-column:1;grid-row:3;position:relative;overflow:hidden;background:#0d1117}
+#canvas-wrap{flex:1;position:relative;overflow:hidden;background:#0d1117;min-height:0;min-width:0}
 #canvas-wrap canvas{display:block;width:100%!important;height:100%!important}
 #tooltip{
   position:absolute;pointer-events:none;display:none;
@@ -152,7 +173,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
 .loading-text{font-size:13px;color:var(--text-dim)}
 
 /* Sidebar */
-#sidebar{grid-column:2;grid-row:3;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+#sidebar{grid-column:2;grid-row:2;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
 .sidebar-section{background:rgba(15,52,96,0.3);border:1px solid var(--border);border-radius:6px;padding:10px}
 .sidebar-section h3{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
 

@@ -18,6 +18,8 @@ let autoDepartments = {};// auto-generated dept colors from cases
 let isUniversalMode = true;
 let editorMode = false;
 let spreadsheetCollapsed = false;
+let layoutMode = 'stacked'; // 'stacked' or 'side-by-side'
+let splitRatio = 0.4; // fraction of content-area for spreadsheet (0.0 - 1.0)
 
 // ── DOM refs ──
 const truckSelect = document.getElementById('truck-select');
@@ -32,7 +34,10 @@ const btnPerspective = document.getElementById('btn-perspective');
 const deptFilter = document.getElementById('dept-filter');
 const tooltip = document.getElementById('tooltip');
 const canvasWrap = document.getElementById('canvas-wrap');
+const contentArea = document.getElementById('content-area');
+const splitter = document.getElementById('splitter');
 const btnEditor = document.getElementById('btn-editor');
+const btnLayoutMode = document.getElementById('btn-layout-mode');
 
 // Stats
 const statCases = document.getElementById('stat-cases');
@@ -93,8 +98,14 @@ async function boot() {
       await switchConfigMode(savedConfig);
     }
 
+    // Restore layout settings
+    restoreLayoutSettings();
+    applyLayout();
+
     // Wire up events
     wireEvents();
+    setupSplitter();
+    setupResizeObserver();
 
     // Update stats for empty state
     updateStats();
@@ -241,6 +252,9 @@ function wireEvents() {
     const isPerspective = viewer.togglePerspective();
     btnPerspective.textContent = isPerspective ? 'Perspective' : 'Orthographic';
   });
+
+  // Layout mode toggle
+  btnLayoutMode.addEventListener('click', toggleLayoutMode);
 
   // Editor toggle
   btnEditor.addEventListener('click', toggleEditor);
@@ -404,8 +418,7 @@ function toggleSpreadsheetPanel() {
   const btn = document.getElementById('btn-collapse-sheet');
   btn.innerHTML = spreadsheetCollapsed ? '&#9660;' : '&#9650;';
   btn.title = spreadsheetCollapsed ? 'Expand spreadsheet' : 'Collapse spreadsheet';
-  // Resize 3D viewer after panel transition (200ms in CSS)
-  setTimeout(() => { if (viewer) viewer._onResize(); }, 220);
+  // ResizeObserver will auto-trigger viewer._onResize()
 }
 
 // ── Update row count display ──
@@ -618,6 +631,100 @@ function updateEditorSelection(selectedData, selectionSize) {
 function toggleAxisLockBtn(axis) {
   editor.setAxisLock(axis);
   updateEditorUI();
+}
+
+// ── Layout management ──
+function restoreLayoutSettings() {
+  const savedMode = localStorage.getItem('tlp-layout-mode');
+  if (savedMode === 'stacked' || savedMode === 'side-by-side') layoutMode = savedMode;
+  const savedRatio = parseFloat(localStorage.getItem('tlp-split-ratio'));
+  if (!isNaN(savedRatio) && savedRatio > 0.1 && savedRatio < 0.9) splitRatio = savedRatio;
+}
+
+function saveLayoutSettings() {
+  localStorage.setItem('tlp-layout-mode', layoutMode);
+  localStorage.setItem('tlp-split-ratio', String(splitRatio));
+}
+
+function applyLayout() {
+  const isSide = layoutMode === 'side-by-side';
+  contentArea.classList.toggle('side-by-side', isSide);
+
+  const panel = document.getElementById('spreadsheet-panel');
+
+  if (spreadsheetCollapsed) {
+    // Collapsed: fixed size handled by CSS
+    panel.style.width = '';
+    panel.style.height = '';
+  } else if (isSide) {
+    panel.style.height = '';
+    panel.style.width = (splitRatio * 100) + '%';
+  } else {
+    panel.style.width = '';
+    // In stacked mode, convert ratio to pixel height based on content-area size
+    const totalH = contentArea.clientHeight;
+    panel.style.height = Math.round(splitRatio * totalH) + 'px';
+  }
+
+  // Update button text
+  btnLayoutMode.innerHTML = isSide ? '&#9638; Side by Side' : '&#9638; Stacked';
+}
+
+function toggleLayoutMode() {
+  layoutMode = layoutMode === 'stacked' ? 'side-by-side' : 'stacked';
+  applyLayout();
+  saveLayoutSettings();
+}
+
+function setupSplitter() {
+  let dragging = false;
+
+  splitter.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    splitter.classList.add('active');
+    document.body.style.cursor = layoutMode === 'side-by-side' ? 'col-resize' : 'row-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+
+    const rect = contentArea.getBoundingClientRect();
+    const panel = document.getElementById('spreadsheet-panel');
+
+    if (layoutMode === 'side-by-side') {
+      const x = e.clientX - rect.left;
+      const ratio = x / rect.width;
+      splitRatio = Math.max(0.1, Math.min(0.9, ratio));
+      panel.style.width = (splitRatio * 100) + '%';
+      panel.style.height = '';
+    } else {
+      const y = e.clientY - rect.top;
+      const ratio = y / rect.height;
+      splitRatio = Math.max(0.1, Math.min(0.9, ratio));
+      panel.style.height = Math.round(splitRatio * rect.height) + 'px';
+      panel.style.width = '';
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    saveLayoutSettings();
+  });
+}
+
+function setupResizeObserver() {
+  if (!window.ResizeObserver) return;
+  const ro = new ResizeObserver(() => {
+    if (viewer) viewer._onResize();
+  });
+  ro.observe(canvasWrap);
 }
 
 // ── Debug access (for testing) ──

@@ -33,6 +33,7 @@
       <input type="text" id="sheet-url" placeholder="Google Sheet URL or ID">
       <button id="btn-fetch-sheet">Fetch to Editor</button>
       <button id="btn-editor" title="Toggle editor mode — drag, rotate, reposition cases">Editor</button>
+      <button id="btn-layout-mode" title="Toggle layout: stacked / side by side">&#9638; Stacked</button>
       <button id="btn-perspective" title="Toggle perspective / orthographic">Perspective</button>
       <button id="btn-reset" title="Reset camera">Reset</button>
       <button id="btn-top" title="Top-down view">Top</button>
@@ -41,28 +42,34 @@
     </div>
   </div>
 
-  <!-- Spreadsheet Panel -->
-  <div id="spreadsheet-panel">
-    <div class="spreadsheet-toolbar">
-      <button id="btn-calculate" class="accent" title="Run solver with current spreadsheet data">Calculate</button>
-      <button id="btn-import-csv" title="Import CSV file">Import CSV</button>
-      <button id="btn-export-csv" title="Export spreadsheet as CSV">Export CSV</button>
-      <button id="btn-template" title="Reset spreadsheet to template example data">Template</button>
-      <div class="toolbar-spacer"></div>
-      <span id="sheet-row-count" style="font-size:10px;color:var(--text-dim)"></span>
-      <button id="btn-collapse-sheet" class="icon-btn" title="Collapse spreadsheet">&#9650;</button>
+  <!-- Content Area (spreadsheet + splitter + 3D canvas) -->
+  <div id="content-area">
+    <!-- Spreadsheet Panel -->
+    <div id="spreadsheet-panel">
+      <div class="spreadsheet-toolbar">
+        <button id="btn-calculate" class="accent" title="Run solver with current spreadsheet data">Calculate</button>
+        <button id="btn-import-csv" title="Import CSV file">Import CSV</button>
+        <button id="btn-export-csv" title="Export spreadsheet as CSV">Export CSV</button>
+        <button id="btn-template" title="Reset spreadsheet to template example data">Template</button>
+        <div class="toolbar-spacer"></div>
+        <span id="sheet-row-count" style="font-size:10px;color:var(--text-dim)"></span>
+        <button id="btn-collapse-sheet" class="icon-btn" title="Collapse spreadsheet">&#9650;</button>
+      </div>
+      <div id="spreadsheet-container"></div>
+      <input type="file" id="csv-file-input" accept=".csv,.txt,.tsv" style="display:none">
     </div>
-    <div id="spreadsheet-container"></div>
-    <input type="file" id="csv-file-input" accept=".csv,.txt,.tsv" style="display:none">
-  </div>
 
-  <!-- 3D Canvas -->
-  <div id="canvas-wrap">
-    <div id="tooltip"></div>
-    <div id="ed-box-select"></div>
-    <div id="loading-overlay">
-      <div class="loading-spinner"></div>
-      <div class="loading-text" id="loading-text">Loading...</div>
+    <!-- Splitter (drag to resize) -->
+    <div id="splitter"></div>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-wrap">
+      <div id="tooltip"></div>
+      <div id="ed-box-select"></div>
+      <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loading-text">Loading...</div>
+      </div>
     </div>
   </div>
 
