@@ -333,7 +333,21 @@ export function wallPlannerSolve(cases, config) {
         });
       }
     }
-    fullWalls.push(wall);
+    // If this wall is too weak (< 80% fill), send its items to orphan pool for consolidation
+    if (wall.widthFill / WP_TRUCK_WIDTH < WP_MIN_FILL) {
+      orphanPools.push({
+        sg: inv.sg, blockName: inv.blockName,
+        w: inv.w, d: inv.d, h: inv.h,
+        rot: inv.rot,
+        stackable: inv.stackable, maxStack: inv.maxStack,
+        stackedH: inv.stackedH,
+        cases: wall.items.flatMap(item => item.cases),
+        dept: inv.dept,
+        allowRotation: inv.allowRotation,
+      });
+    } else {
+      fullWalls.push(wall);
+    }
   }
 
   console.log(`[WallPlanner] Phase 2: ${fullWalls.length} full walls, ${orphanPools.length} orphan pools (${orphanPools.reduce((s, p) => s + p.cases.length, 0)} cases)`);
