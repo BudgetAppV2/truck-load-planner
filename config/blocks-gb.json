@@ -17,7 +17,7 @@
     "GB_CAMION_LX_BASE DE BOOM":      {"w":34,"d":34,"h":48,"rot":0,"stackable":false,"maxStack":1,"allowRotation":false},
     "CAM_LX_Alpha":                   {"w":31,"d":29,"h":36,"rot":0,"stackable":true,"maxStack":2,"allowRotation":false},
     "CAM_LX_Beye":                    {"w":23,"d":43,"h":31,"rot":90,"stackable":true,"maxStack":2},
-    "CAM_LX_ChromaQ":                 {"w":72,"d":31,"h":36,"rot":0,"stackable":false,"maxStack":1},
+    "CAM_LX_ChromaQ":                 {"w":72,"d":31,"h":36,"rot":0,"stackable":false,"maxStack":1,"allowRotation":false},
     "CAM_LX_ANTARI_Hazer":            {"w":26,"d":20,"h":24,"rot":0,"stackable":true,"maxStack":2},
     "GB_CAMION_LX_FEUX DE LA RAMPE":  {"w":44,"d":30,"h":36,"rot":0,"stackable":false,"maxStack":1},
     "CAM_LX_Rack Solotech":           {"w":60,"d":24,"h":75,"rot":0,"stackable":false,"maxStack":1},

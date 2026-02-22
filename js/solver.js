@@ -27,7 +27,6 @@ const WP_RELIABILITY = {
 // Constants (unchanged from original)
 const WP_MIN_FILL = 0.80;
 const WP_GAP_THRESH = 0.95;
-const WP_DEPTH_COMPAT = 1.5;
 
 /**
  * Run the WallPlanner solver.
@@ -362,7 +361,7 @@ export function wallPlannerSolve(cases, config) {
 
     for (const pool of orphanPools) {
       if (pool.cases.length === 0 || wpGetDept(pool.sg) !== wallDept) continue;
-      if (pool.d > wall.depth * WP_DEPTH_COMPAT) continue;
+      if (Math.abs(wall.depth - pool.d) > 8) continue;
 
       while (pool.cases.length > 0 && gap >= pool.w - 0.5) {
         const stack = Math.min(pool.maxStack, pool.cases.length);
