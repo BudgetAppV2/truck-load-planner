@@ -89,6 +89,7 @@ export function wallPlannerSolve(cases, config) {
   }
 
   // Helper: wall score for sorting (Phase 4)
+  // Lower score = closer to cab (fond). Cab-end walls must be flat, full-width, tall.
   function wpWallScore(w) {
     const rel = w.reliability || 99;
     const relGroup = rel <= 3 ? rel : 4;
@@ -97,6 +98,16 @@ export function wallPlannerSolve(cases, config) {
     const heightInv = Math.round(100 - effectiveH);
     const deptPri = deptPriority[wpWallDept(w)] || 99;
     let score = (heightInv * 100) + (deptPri * 4) + relGroup;
+    // Flat-top penalty: uneven height surfaces are unstable for the wall behind them
+    if (w.items && w.items.length > 0) {
+      const heights = w.items.map(it => it.stackedH);
+      const heightRange = Math.max(...heights) - Math.min(...heights);
+      if (heightRange > 10) {
+        score += Math.round((heightRange / (config.truckHeight || 110)) * 3000);
+      }
+    }
+    // Column count bonus: more columns = fuller/more stable surface → toward cab
+    if (w.items) score -= Math.min(w.items.length, 4) * 50;
     // Penalize sparse walls (1-2 columns, <90% fill) — not stable enough for cab end
     if (w.items && w.items.length <= 2 && fillRatio < 0.90) score += 2000;
     // Very weak walls (<50% fill) always go near the door
