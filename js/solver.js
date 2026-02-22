@@ -96,7 +96,12 @@ export function wallPlannerSolve(cases, config) {
     const effectiveH = (w.maxHeight || 0) * fillRatio;
     const heightInv = Math.round(100 - effectiveH);
     const deptPri = deptPriority[wpWallDept(w)] || 99;
-    return (heightInv * 100) + (deptPri * 4) + relGroup;
+    let score = (heightInv * 100) + (deptPri * 4) + relGroup;
+    // Penalize sparse walls (1-2 columns, <90% fill) — not stable enough for cab end
+    if (w.items && w.items.length <= 2 && fillRatio < 0.90) score += 2000;
+    // Very weak walls (<50% fill) always go near the door
+    if (fillRatio < 0.50) score += 5000;
+    return score;
   }
 
   // Helper: merge weak walls
