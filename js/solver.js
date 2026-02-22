@@ -552,6 +552,155 @@ export function wallPlannerSolve(cases, config) {
   }
   orphanWalls = orphanWalls.filter(w => w.items.length > 0);
 
+  // ── Phase 3D: Column-Level Bin Packing ──
+  // Decompose weak walls into individual columns and re-pack with best-fit scoring
+  {
+    const weakWalls3D = orphanWalls.filter(w => (w.widthFill / WP_TRUCK_WIDTH) < WP_MIN_FILL);
+
+    if (weakWalls3D.length >= 2) {
+      const weakDepthBefore = weakWalls3D.reduce((s, w) => s + w.depth, 0);
+      const weakCountBefore = weakWalls3D.length;
+
+      // STEP 1: Decompose weak walls into individual columns
+      const availableColumns = [];
+
+      for (const wall of weakWalls3D) {
+        for (const item of wall.items) {
+          availableColumns.push({
+            sg: item.sg,
+            blockName: item.blockName,
+            w: item.w,
+            d: item.d,
+            h: item.h,
+            rot: item.rot,
+            stackCount: item.stackCount,
+            stackedH: item.stackedH,
+            cases: item.cases.slice(),
+            dept: wpGetDept(item.sg),
+          });
+        }
+      }
+
+      // Also add remaining orphan pools with cases
+      for (const pool of orphanPools) {
+        if (pool.cases.length === 0) continue;
+        while (pool.cases.length > 0) {
+          const stack = Math.min(pool.maxStack, pool.cases.length);
+          const stackedH = pool.h * stack;
+          const stackCases = pool.cases.splice(0, stack);
+          availableColumns.push({
+            sg: pool.sg,
+            blockName: pool.blockName,
+            w: pool.w,
+            d: pool.d,
+            h: pool.h,
+            rot: pool.rot,
+            stackCount: stack,
+            stackedH,
+            cases: stackCases,
+            dept: wpGetDept(pool.sg),
+          });
+        }
+      }
+
+      // Remove the weak walls from orphanWalls
+      orphanWalls = orphanWalls.filter(w => (w.widthFill / WP_TRUCK_WIDTH) >= WP_MIN_FILL);
+
+      // STEP 2: Sort columns by width descending (biggest first)
+      availableColumns.sort((a, b) => b.w - a.w);
+
+      // STEP 3: Build walls with best-fit scoring
+      const newWalls3D = [];
+
+      while (availableColumns.length > 0) {
+        // Start new wall with widest remaining column as anchor
+        const wall = {
+          items: [], widthFill: 0, maxHeight: 0, depth: 0,
+          minDepth: Infinity, subgroups: [], reliability: WP_RELIABILITY.ORPHAN_MIXED,
+        };
+
+        const anchor = availableColumns.shift();
+        anchor.xOff = 0;
+        wall.items.push(anchor);
+        wall.widthFill = anchor.w;
+        wall.maxHeight = anchor.stackedH;
+        wall.depth = anchor.d;
+        wall.minDepth = anchor.d;
+        if (!wall.subgroups.includes(anchor.sg)) wall.subgroups.push(anchor.sg);
+
+        // Iteratively find best column to add
+        let changed = true;
+        while (changed) {
+          changed = false;
+          let bestIdx = -1;
+          let bestScore = -1;
+
+          for (let i = 0; i < availableColumns.length; i++) {
+            const col = availableColumns[i];
+
+            // Width check
+            if (wall.widthFill + col.w > WP_TRUCK_WIDTH + 0.5) continue;
+
+            // Flat-face check (strict: delta <= 8")
+            const newMinD = Math.min(wall.minDepth, col.d);
+            const newMaxD = Math.max(wall.depth, col.d);
+            if (newMaxD - newMinD > 8) continue;
+
+            // Score this addition
+            const newFill = (wall.widthFill + col.w) / WP_TRUCK_WIDTH;
+            const depthDelta = (newMaxD - newMinD) / 8; // 0 to 1, lower is better
+            const heightDiff = Math.abs(wall.maxHeight - col.stackedH) / (config.truckHeight || 110);
+            const sameDept = (col.dept === wpWallDept(wall)) ? 0.1 : 0;
+
+            const score = newFill * 0.60
+                        + (1 - depthDelta) * 0.25
+                        + (1 - heightDiff) * 0.10
+                        + sameDept * 0.05;
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestIdx = i;
+            }
+          }
+
+          if (bestIdx >= 0) {
+            const chosen = availableColumns.splice(bestIdx, 1)[0];
+            chosen.xOff = wall.widthFill;
+            wall.items.push(chosen);
+            wall.widthFill += chosen.w;
+            wall.maxHeight = Math.max(wall.maxHeight, chosen.stackedH);
+            wall.depth = Math.max(wall.depth, chosen.d);
+            wall.minDepth = Math.min(wall.minDepth, chosen.d);
+            if (!wall.subgroups.includes(chosen.sg)) wall.subgroups.push(chosen.sg);
+            changed = true;
+          }
+        }
+
+        // Set reliability based on composition
+        if (wall.subgroups.length === 1) {
+          wall.reliability = WP_RELIABILITY.ORPHAN_SAME_DEPT;
+        } else {
+          const depts = new Set(wall.items.map(it => wpGetDept(it.sg)));
+          wall.reliability = depts.size === 1 ? WP_RELIABILITY.ORPHAN_SAME_DEPT : WP_RELIABILITY.ORPHAN_MIXED;
+        }
+
+        // Flat-top check
+        const heights = wall.items.map(i => i.stackedH);
+        wall.isFlatTop = new Set(heights.map(h => Math.round(h * 10))).size <= 1;
+
+        newWalls3D.push(wall);
+      }
+
+      // STEP 4: Compare and use Phase 3D result
+      const weakDepthAfter = newWalls3D.reduce((s, w) => s + w.depth, 0);
+      orphanWalls.push(...newWalls3D);
+
+      console.log(`[WallPlanner] Phase 3D: consolidated ${weakCountBefore} weak walls into ${newWalls3D.length} walls (depth: ${Math.round(weakDepthBefore)}" → ${Math.round(weakDepthAfter)}")`);
+    } else {
+      console.log(`[WallPlanner] Phase 3D: skipped (fewer than 2 weak walls)`);
+    }
+  }
+
   // Log weak walls for diagnostics
   const weakWalls = orphanWalls.filter(w => (w.widthFill / WP_TRUCK_WIDTH) < WP_MIN_FILL);
   if (weakWalls.length > 0) {
