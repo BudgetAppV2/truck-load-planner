@@ -19,26 +19,7 @@ const ACAD_DEPT_COLORS = {
   AUTRE: 9,     // light gray
 };
 
-/**
- * SketchUp RGB mapping by department (matches viewer hex colors).
- */
-const SKETCHUP_DEPT_COLORS = {
-  LX:      [76, 175, 80],    // #4CAF50
-  SON:     [33, 150, 243],   // #2196F3
-  CARP:    [255, 152, 0],    // #FF9800
-  VDO:     [156, 39, 176],   // #9C27B0
-  PROPS:   [244, 67, 54],    // #F44336
-  COST:    [233, 30, 99],    // #E91E63
-  ADM:     [96, 125, 139],   // #607D8B
-  GENERAL: [120, 144, 156],  // #78909C
-  AUTRE:   [158, 158, 158],  // #9E9E9E
-};
-
-// Fallback palette for unknown departments (both systems)
-const FALLBACK_PALETTE_RGB = [
-  [0, 188, 212], [255, 235, 59], [121, 85, 72], [139, 195, 74],
-  [255, 87, 34], [0, 150, 136], [205, 220, 57], [63, 81, 181],
-];
+// Fallback ACI palette for unknown departments in AutoCAD export
 const FALLBACK_ACAD = [4, 40, 34, 82, 14, 94, 54, 142];
 
 /**
@@ -206,19 +187,12 @@ export function generateLISP(placements, wallSections, truck, deptColors) {
 // ─────────────────────────────────────────────────────────
 
 /**
- * Convert hex color string to [r, g, b] array (0–255).
- */
-function hexToRgb(hex) {
-  const h = hex.replace('#', '');
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
-}
-
-/**
  * Generate a SketchUp Ruby (.rb) file from placements + truck config.
+ *
+ * Coordinate mapping (solver → SketchUp):
+ *   solver x (width position)  → SketchUp X
+ *   solver y (depth, 0=cab)    → SketchUp Y
+ *   solver z (height, 0=floor) → SketchUp Z (up)
  *
  * @param {Object[]} placements — solver placement array
  * @param {Object[]} wallSections — solver wallSections array
@@ -236,29 +210,24 @@ export function generateSketchUp(placements, wallSections, truck, deptColors) {
   lines.push('# Generated: ' + new Date().toISOString());
   lines.push(`# Truck: ${W}" x ${L}" x ${H}"`);
   lines.push(`# Cases: ${placements.length}, Walls: ${wallSections.length}`);
+  lines.push(`# Coordinates: X=width, Y=depth (0=cab), Z=height (up)`);
   lines.push('');
   lines.push('model = Sketchup.active_model');
+  lines.push('# Force inches regardless of user template units');
+  lines.push('model.options["UnitsOptions"]["LengthUnit"] = 0');
   lines.push('model.start_operation("Import Truck Load", true)');
   lines.push('entities = model.active_entities');
   lines.push('');
 
-  // Build dept→RGB map from deptColors (hex) or fallback
-  lines.push('# Department colors');
-  lines.push('dept_colors = {');
+  // Create one material per department at setup time
   const allDepts = new Set(placements.map(p => p.dept || 'GENERAL'));
-  let fbIdx = 0;
+  lines.push('# Department materials (one per department)');
   for (const dept of allDepts) {
-    let rgb;
-    if (deptColors && deptColors[dept] && deptColors[dept].color) {
-      rgb = hexToRgb(deptColors[dept].color);
-    } else if (SKETCHUP_DEPT_COLORS[dept]) {
-      rgb = SKETCHUP_DEPT_COLORS[dept];
-    } else {
-      rgb = FALLBACK_PALETTE_RGB[fbIdx++ % FALLBACK_PALETTE_RGB.length];
-    }
-    lines.push(`  "${rubyEscape(dept)}" => Sketchup::Color.new(${rgb[0]}, ${rgb[1]}, ${rgb[2]}),`);
+    const safeDept = rubyEscape(dept);
+    const rgb = deptColorToRgb(dept, deptColors);
+    lines.push(`mat = model.materials.add("TLP_${safeDept}")`);
+    lines.push(`mat.color = Sketchup::Color.new(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`);
   }
-  lines.push('}');
   lines.push('');
 
   // Top-level group
@@ -268,12 +237,11 @@ export function generateSketchUp(placements, wallSections, truck, deptColors) {
   lines.push('tl_ents = truck_load_group.entities');
   lines.push('');
 
-  // Truck wireframe
+  // Truck wireframe — individual add_line calls for clean edges
   lines.push('# Truck wireframe');
   lines.push('truck_group = tl_ents.add_group');
   lines.push('truck_group.name = "Truck"');
   lines.push('te = truck_group.entities');
-  // Bottom
   lines.push(`pt0 = [0, 0, 0]`);
   lines.push(`pt1 = [${W}, 0, 0]`);
   lines.push(`pt2 = [${W}, ${L}, 0]`);
@@ -283,14 +251,20 @@ export function generateSketchUp(placements, wallSections, truck, deptColors) {
   lines.push(`pt6 = [${W}, ${L}, ${H}]`);
   lines.push(`pt7 = [0, ${L}, ${H}]`);
   lines.push('# Bottom edges');
-  lines.push('te.add_edges(pt0, pt1, pt2, pt3, pt0)');
+  lines.push('te.add_line(pt0, pt1)');
+  lines.push('te.add_line(pt1, pt2)');
+  lines.push('te.add_line(pt2, pt3)');
+  lines.push('te.add_line(pt3, pt0)');
   lines.push('# Top edges');
-  lines.push('te.add_edges(pt4, pt5, pt6, pt7, pt4)');
+  lines.push('te.add_line(pt4, pt5)');
+  lines.push('te.add_line(pt5, pt6)');
+  lines.push('te.add_line(pt6, pt7)');
+  lines.push('te.add_line(pt7, pt4)');
   lines.push('# Vertical edges');
-  lines.push('te.add_edges(pt0, pt4)');
-  lines.push('te.add_edges(pt1, pt5)');
-  lines.push('te.add_edges(pt2, pt6)');
-  lines.push('te.add_edges(pt3, pt7)');
+  lines.push('te.add_line(pt0, pt4)');
+  lines.push('te.add_line(pt1, pt5)');
+  lines.push('te.add_line(pt2, pt6)');
+  lines.push('te.add_line(pt3, pt7)');
   lines.push('');
 
   // Cases grouped by wall
@@ -314,6 +288,7 @@ export function generateSketchUp(placements, wallSections, truck, deptColors) {
 
     for (const p of wallPlacements) {
       const dept = p.dept || 'GENERAL';
+      const safeDept = rubyEscape(dept);
       const name = rubyEscape(p.name || 'Case');
       const x = p.x, y = p.y, z = p.z;
       const w = p.width, d = p.depth, h = p.height;
@@ -337,10 +312,8 @@ export function generateSketchUp(placements, wallSections, truck, deptColors) {
         lines.push(`cg.transform!(Geom::Transformation.translation([${x}, ${y}, ${z}]))`);
       }
 
-      // Apply material color
-      lines.push(`mat = model.materials.add("${rubyEscape(dept)}_${name}")`);
-      lines.push(`mat.color = dept_colors["${rubyEscape(dept)}"] || Sketchup::Color.new(180, 180, 180)`);
-      lines.push(`cg.material = mat`);
+      // Apply shared department material
+      lines.push(`cg.material = model.materials["TLP_${safeDept}"]`);
       lines.push('');
     }
   }
@@ -349,6 +322,22 @@ export function generateSketchUp(placements, wallSections, truck, deptColors) {
   lines.push('puts "Truck load imported: ' + placements.length + ' cases"');
 
   return lines.join('\n');
+}
+
+/**
+ * Resolve department to [r, g, b] from the deptColors map.
+ * Parses hex color strings like '#4CAF50'. Falls back to gray.
+ */
+function deptColorToRgb(dept, deptColors) {
+  if (deptColors && deptColors[dept] && deptColors[dept].color) {
+    const hex = deptColors[dept].color;
+    return [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16),
+    ];
+  }
+  return [180, 180, 180]; // neutral gray fallback
 }
 
 /**
