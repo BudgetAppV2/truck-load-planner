@@ -5,6 +5,7 @@ import { fetchAndParseCases } from './sheet-loader.js';
 import { wallPlannerSolve, buildDeptPriority, buildDeptColors } from './solver.js';
 import { TruckEditor } from './editor.js';
 import { SpreadsheetEditor } from './spreadsheet.js';
+import { exportLISP, exportSketchUp } from './export.js';
 
 let viewer;
 let editor;
@@ -240,6 +241,16 @@ function wireEvents() {
   });
   document.getElementById('btn-collapse-sheet').addEventListener('click', toggleSpreadsheetPanel);
 
+  // Export buttons
+  document.getElementById('btn-export-lisp').addEventListener('click', () => {
+    const truck = truckConfig.trucks[currentTruckKey];
+    exportLISP(viewer.placementData, lastWallSections, truck, autoDepartments);
+  });
+  document.getElementById('btn-export-sketchup').addEventListener('click', () => {
+    const truck = truckConfig.trucks[currentTruckKey];
+    exportSketchUp(viewer.placementData, lastWallSections, truck, autoDepartments);
+  });
+
   // CSV file input handler
   document.getElementById('csv-file-input').addEventListener('change', handleCSVFileSelect);
 
@@ -451,6 +462,10 @@ function runSolver() {
   // Load placements into 3D viewer
   viewer.loadData(result.placements);
   viewer.showWallSections(result.wallSections);
+
+  // Enable export buttons now that we have placements
+  document.getElementById('btn-export-lisp').disabled = false;
+  document.getElementById('btn-export-sketchup').disabled = false;
 
   // Update all UI
   updateStats();
